@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1초 노래 맞추기</title>
+<style>
+  :root {
+    /* 기본 테마: 클라우드 댄서(오프화이트) + 버터 옐로우 — JS가 저장된 테마로 덮어씀 */
+    --bg: #f7f5f0;
+    --card: #ffffff;
+    --card2: #fbfaf7;
+    --ink: #1c1c1f;
+    --sub: #77736a;
+    --line: #e5e1d8;
+    --accent: #e0a922;
+    --accent-hover: #cf9b1a;
+    --accent-ink: #1c1c1f;
+    --accent-rgb: 224, 169, 34;
+    --green: #1e8e3e;
+    --wrong: #d23b2f;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Pretendard",
+                 "Apple SD Gothic Neo", "Helvetica Neue", "Malgun Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: clamp(24px, 6vh, 56px) clamp(12px, 4vw, 24px);
+    -webkit-font-smoothing: antialiased;
+    transition: background 0.25s;
+  }
+  .app { width: 100%; max-width: 540px; }
+
+  header { text-align: center; margin-bottom: clamp(20px, 4vh, 34px); }
+  h1 {
+    font-size: clamp(26px, 7vw, 34px);
+    font-weight: 800;
+    letter-spacing: -1px;
+    line-height: 1.2;
+    margin-bottom: 8px;
+  }
+  h1 .sec { color: var(--accent); }
+  .tagline { color: var(--sub); font-size: clamp(13px, 3.5vw, 15px); letter-spacing: -0.2px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: clamp(18px, 4.5vw, 28px);
+    margin-bottom: 14px;
+    transition: background 0.25s, border-color 0.25s;
+  }
+
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--sub);
+    margin-bottom: 8px;
+  }
+  .row { display: flex; gap: 8px; }
+  input[type="text"], input[type="number"] {
+    flex: 1;
+    min-width: 0;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    color: var(--ink);
+    padding: 12px 16px;
+    font-size: 16px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  input[type="text"]:focus, input[type="number"]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.2);
+  }
+  input::placeholder { color: var(--sub); opacity: 0.6; }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+  button {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border: none;
+    border-radius: 10px;
+    padding: 12px 22px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { background: var(--card2); color: var(--sub); opacity: 0.65; cursor: not-allowed; }
+  button.ghost {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    font-weight: 600;
+  }
+  button.ghost:hover { background: var(--card2); }
+  button.ghost:disabled { background: transparent; color: var(--sub); opacity: 0.45; }
+
+  .status { font-size: 13px; color: var(--sub); margin-top: 14px; min-height: 18px; }
+  .status.error { color: var(--wrong); }
+
+  .chk-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 20px;
+    font-size: 14px;
+    cursor: pointer;
+    user-select: none;
+    width: fit-content;
+  }
+  .chk-row input[type="checkbox"] {
+    width: 17px;
+    height: 17px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .field { margin-top: 14px; }
+  .year-sep { align-self: center; color: var(--sub); font-size: 14px; }
+  .start-btn { width: 100%; margin-top: 20px; padding: 14px; font-size: 16px; }
+
+  /* 가수 선택 그리드 — 화면 폭에 따라 유동적으로 칸 수 변경 */
+  .artist-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 10px;
+    margin-top: 20px;
+  }
+  .artist-card {
+    text-align: center;
+    padding: 14px 8px 12px;
+    border-radius: 14px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    position: relative;
+  }
+  .artist-card:hover { background: var(--card2); }
+  .artist-card.selected { border-color: var(--accent); background: var(--card2); }
+  .artist-card.selected::after {
+    content: "✓";
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: 12px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .artist-card img, .artist-card .no-art {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin: 0 auto 10px;
+    display: block;
+    background: var(--card2);
+  }
+  .artist-card .no-art {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--sub);
+    font-size: 26px;
+  }
+  .artist-card .a-name {
+    font-size: 13px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .artist-card .a-meta {
+    font-size: 11px;
+    color: var(--sub);
+    margin-top: 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 선택된 가수 칩 */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .chip {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--card2);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 5px 10px 5px 5px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .chip img, .chip .no-art {
+    width: 24px; height: 24px; border-radius: 50%; object-fit: cover; background: var(--line);
+    display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--sub);
+  }
+  .chip .x {
+    color: var(--sub);
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+    padding: 2px 4px;
+  }
+  .chip .x:hover { color: var(--wrong); }
+
+  /* 게임 상단: 선택한 가수들 */
+  #gameCard { display: none; }
+  .game-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .ga-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .avatars { display: flex; flex-shrink: 0; }
+  .avatars img, .avatars .no-art {
+    width: 44px; height: 44px; border-radius: 50%; object-fit: cover;
+    border: 2px solid var(--card);
+    background: var(--card2);
+    margin-left: -10px;
+  }
+  .avatars img:first-child, .avatars .no-art:first-child { margin-left: 0; }
+  .avatars .no-art { display: flex; align-items: center; justify-content: center; color: var(--sub); }
+  .artist-label {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .score { font-size: 13px; color: var(--sub); flex-shrink: 0; }
+  .score b { font-weight: 700; }
+  .score .ok { color: var(--green); }
+  .score .no { color: var(--wrong); }
+
+  .play-zone { text-align: center; margin: 4px 0 24px; }
+  .play-btn {
+    width: clamp(72px, 18vw, 84px);
+    height: clamp(72px, 18vw, 84px);
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .play-btn svg { width: 30%; height: 30%; fill: var(--accent-ink); margin-left: 4px; }
+  .play-btn.playing { animation: ripple 1.1s infinite; }
+  @keyframes ripple {
+    0% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.4); }
+    100% { box-shadow: 0 0 0 20px rgba(var(--accent-rgb), 0); }
+  }
+  .play-hint { margin-top: 14px; font-size: 13px; color: var(--sub); }
+
+  .hint-chip {
+    display: none;
+    margin: 0 auto 22px;
+    width: fit-content;
+    max-width: 100%;
+    padding: 10px 20px;
+    border-radius: 12px;
+    background: var(--card2);
+    border: 1px solid var(--line);
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    line-height: 1.6;
+    text-align: center;
+  }
+  .hint-chip.show { display: block; }
+
+  .answer-row { display: flex; gap: 8px; margin-top: 6px; }
+
+  .album-reveal {
+    display: none;
+    text-align: center;
+    margin-top: 20px;
+  }
+  .album-reveal.show { display: block; animation: rise 0.35s ease; }
+  .album-reveal img {
+    width: clamp(140px, 42vw, 180px);
+    height: clamp(140px, 42vw, 180px);
+    border-radius: 12px;
+    object-fit: cover;
+    box-shadow: var(--shadow);
+  }
+  @keyframes rise {
+    from { transform: translateY(10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  .result {
+    margin-top: 16px;
+    padding: 13px 16px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+    text-align: center;
+    display: none;
+  }
+  .result.correct { display: block; background: rgba(60, 190, 100, 0.14); color: var(--green); }
+  .result.wrong { display: block; background: rgba(220, 60, 50, 0.12); color: var(--wrong); }
+  .result.reveal { display: block; background: var(--card2); color: var(--sub); }
+
+  /* 버튼 줄 — 좁은 화면에서는 자동 줄바꿈 */
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .actions button { flex: 1 1 30%; min-width: 100px; padding-left: 8px; padding-right: 8px; font-size: 13px; }
+
+  footer {
+    text-align: center;
+    font-size: 12px;
+    color: var(--sub);
+    opacity: 0.75;
+    margin-top: 26px;
+    line-height: 1.7;
+  }
+
+  /* ---------- 테마 설정 ---------- */
+  .theme-btn {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--card);
+    border: 1px solid var(--line);
+    font-size: 19px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 60;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.10);
+  }
+  .theme-btn:hover { background: var(--card2); }
+  .theme-panel {
+    position: fixed;
+    top: 64px;
+    right: 14px;
+    width: 250px;
+    max-width: calc(100vw - 28px);
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px;
+    z-index: 60;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.18);
+  }
+  .tp-title { font-size: 13px; font-weight: 700; margin-bottom: 12px; }
+  .tp-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .tp-swatch {
+    border-radius: 10px;
+    border: 2px solid transparent;
+    padding: 6px 4px 7px;
+    cursor: pointer;
+    text-align: center;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .tp-swatch:hover { background: var(--card2); }
+  .tp-swatch.active { border-color: var(--accent); }
+  .tp-swatch .dot {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    margin: 0 auto 5px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+  }
+  .tp-swatch .t-name { font-size: 10.5px; color: var(--sub); font-weight: 600; }
+  .tp-custom { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .tp-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 8px;
+  }
+  .tp-row input[type="color"] {
+    width: 44px;
+    height: 28px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--card);
+    padding: 2px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<button class="theme-btn" id="themeBtn" title="테마 설정">🎨</button>
+<div class="theme-panel" id="themePanel" style="display:none">
+  <div class="tp-title">테마</div>
+  <div class="tp-presets" id="tpPresets"></div>
+  <div class="tp-custom">
+    <label>직접 설정</label>
+    <div class="tp-row"><span>배경색</span><input type="color" id="customBg"></div>
+    <div class="tp-row"><span>포인트색</span><input type="color" id="customAccent"></div>
+  </div>
+</div>
+
+<div class="app" id="app">
+  <header>
+    <h1><span class="sec">1초</span> 노래 맞추기</h1>
+    <p class="tagline">가수를 고르면 그 가수의 곡을 랜덤으로 골라 딱 1초만 들려드려요</p>
+  </header>
+
+  <div class="main">
+    <!-- 1단계: 가수 검색 & 선택 -->
+    <div class="card" id="searchCard">
+      <label for="artistInput">가수명 · 여러 명을 검색해서 함께 선택할 수 있어요</label>
+      <div class="row">
+        <input type="text" id="artistInput" placeholder="예: 아이유, BTS, 뉴진스" autocomplete="off">
+        <button id="searchBtn">검색</button>
+      </div>
+      <div class="artist-grid" id="artistGrid" style="display:none"></div>
+      <div class="chips" id="selectedRow"></div>
+      <label class="chk-row">
+        <input type="checkbox" id="yearFilterChk">
+        <span>발매 연도로 필터링</span>
+      </label>
+      <div class="field" id="yearField" style="display:none">
+        <label for="yearFrom">발매 연도 범위</label>
+        <div class="row">
+          <input type="number" id="yearFrom" placeholder="시작 연도" min="1950" max="2030">
+          <span class="year-sep">~</span>
+          <input type="number" id="yearTo" placeholder="끝 연도" min="1950" max="2030">
+        </div>
+      </div>
+      <button class="start-btn" id="startBtn" disabled>가수를 선택하면 시작할 수 있어요</button>
+      <div class="status" id="searchStatus"></div>
+    </div>
+
+    <!-- 2단계: 게임 -->
+    <div class="card" id="gameCard">
+      <div class="game-head">
+        <div class="ga-left">
+          <div class="avatars" id="gameAvatars"></div>
+          <span class="artist-label" id="artistLabel"></span>
+        </div>
+        <span class="score">정답 <b class="ok" id="okCount">0</b> · 오답 <b class="no" id="noCount">0</b></span>
+      </div>
+
+      <div class="play-zone">
+        <button class="play-btn" id="playBtn" title="전주 듣기" aria-label="전주 듣기">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8 5.14v13.72c0 .8.87 1.3 1.56.88l11.02-6.86a1.04 1.04 0 0 0 0-1.76L9.56 4.26A1.04 1.04 0 0 0 8 5.14z"/></svg>
+        </button>
+        <div class="play-hint" id="playHint">버튼을 눌러 전주 1초를 들어보세요</div>
+      </div>
+
+      <div class="hint-chip" id="hintChip"></div>
+
+      <label for="guessInput">곡 제목 · 띄어쓰기, 대소문자 무시</label>
+      <div class="answer-row">
+        <input type="text" id="guessInput" placeholder="제목을 입력하세요" autocomplete="off">
+        <button id="guessBtn">제출</button>
+      </div>
+
+      <div class="album-reveal" id="albumReveal"><img id="albumArt" alt="앨범 커버"></div>
+      <div class="result" id="result"></div>
+
+      <div class="actions">
+        <button class="ghost" id="replayBtn">다시 듣기 +1초</button>
+        <button class="ghost" id="hintBtn">초성 힌트</button>
+        <button class="ghost" id="giveUpBtn">정답 공개</button>
+      </div>
+      <div class="actions" id="finishRow" style="display:none">
+        <button class="ghost" id="fullPlayBtn">노래 듣기</button>
+        <button id="nextBtn">다음 문제</button>
+      </div>
+      <div class="actions">
+        <button class="ghost" id="changeArtistBtn">가수 다시 고르기</button>
+      </div>
+    </div>
+
+    <footer>
+      음원: iTunes 30초 미리듣기 · 로그인 불필요 · v11
+    </footer>
+  </div>
+</div>
+
+<script>
+// ---------- 테마 ----------
+const PRESETS = [
+  { name: '클라우드',  bg: '#f7f5f0', accent: '#e0a922' }, // Pantone 2026 클라우드 댄서 + 버터 옐로우
+  { name: '세이지',    bg: '#eef2ea', accent: '#5f8457' },
+  { name: '테라코타',  bg: '#f7efe8', accent: '#c2643c' },
+  { name: '라벤더',    bg: '#f0edfa', accent: '#7461d6' },
+  { name: '미드나잇',  bg: '#101014', accent: '#e0a922' },
+  { name: '블랙레드',  bg: '#0a0a0b', accent: '#e50914' },
+];
+
+function hex2rgb(h) {
+  h = h.replace('#', '');
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+function rgb2hex(r, g, b) {
+  return '#' + [r, g, b].map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
+}
+function mix(a, b, t) {
+  const A = hex2rgb(a), B = hex2rgb(b);
+  return rgb2hex(A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, A[2] + (B[2] - A[2]) * t);
+}
+function lum(h) {
+  const [r, g, b] = hex2rgb(h).map(v => v / 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function applyTheme(bg, accent, save = true) {
+  const dark = lum(bg) < 0.5;
+  const fg = dark ? '#ffffff' : '#17171a';
+  const vars = {
+    '--bg': bg,
+    '--card': dark ? mix(bg, '#ffffff', 0.06) : '#ffffff',
+    '--card2': dark ? mix(bg, '#ffffff', 0.11) : mix(bg, '#ffffff', 0.5),
+    '--ink': dark ? '#f5f5f7' : '#1c1c1f',
+    '--sub': mix(bg, fg, 0.55),
+    '--line': mix(bg, fg, dark ? 0.18 : 0.13),
+    '--accent': accent,
+    '--accent-hover': dark ? mix(accent, '#ffffff', 0.12) : mix(accent, '#000000', 0.1),
+    '--accent-ink': lum(accent) > 0.55 ? '#1c1c1f' : '#ffffff',
+    '--accent-rgb': hex2rgb(accent).join(','),
+    '--green': dark ? '#46d369' : '#1e8e3e',
+    '--wrong': dark ? '#ff6b6b' : '#d23b2f',
+    '--shadow': dark ? '0 10px 34px rgba(0,0,0,.6)' : '0 10px 30px rgba(0,0,0,.15)'
+  };
+  for (const k in vars) document.documentElement.style.setProperty(k, vars[k]);
+  if (save) try { localStorage.setItem('quizTheme', JSON.stringify({ bg, accent })); } catch (e) {}
+  document.getElementById('customBg').value = bg;
+  document.getElementById('customAccent').value = accent;
+  // 프리셋 활성 표시
+  document.querySelectorAll('.tp-swatch').forEach((el, i) => {
+    el.classList.toggle('active', PRESETS[i].bg === bg && PRESETS[i].accent === accent);
+  });
+}
+
+function initTheme() {
+  const panel = document.getElementById('themePanel');
+  const grid = document.getElementById('tpPresets');
+  for (const p of PRESETS) {
+    const el = document.createElement('div');
+    el.className = 'tp-swatch';
+    el.innerHTML = `<div class="dot" style="background:linear-gradient(135deg, ${p.bg} 50%, ${p.accent} 50%)"></div><div class="t-name"></div>`;
+    el.querySelector('.t-name').textContent = p.name;
+    el.addEventListener('click', () => applyTheme(p.bg, p.accent));
+    grid.appendChild(el);
+  }
+  document.getElementById('customBg').addEventListener('input', e => {
+    applyTheme(e.target.value, document.getElementById('customAccent').value);
+  });
+  document.getElementById('customAccent').addEventListener('input', e => {
+    applyTheme(document.getElementById('customBg').value, e.target.value);
+  });
+  document.getElementById('themeBtn').addEventListener('click', e => {
+    e.stopPropagation();
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  });
+  document.addEventListener('click', e => {
+    if (panel.style.display !== 'none' && !panel.contains(e.target)) panel.style.display = 'none';
+  });
+
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('quizTheme')); } catch (e) {}
+  if (saved && saved.bg && saved.accent) applyTheme(saved.bg, saved.accent, false);
+  else applyTheme(PRESETS[0].bg, PRESETS[0].accent, false);
+}
+initTheme();
+
+// ---------- 음원 소스 어댑터 (멜론 API가 열리면 이 부분만 교체) ----------
+function fetchSongsRaw(term) {
+  const url = 'https://itunes.apple.com/search?media=music&entity=song&country=KR&limit=200&term='
+            + encodeURIComponent(term);
+  return jsonp(url).then(data => (data.results || []).filter(r => r.trackName && r.artistName));
+}
+
+function jsonp(url) {
+  return new Promise((resolve, reject) => {
+    const cb = 'itunes_cb_' + Math.random().toString(36).slice(2);
+    const s = document.createElement('script');
+    const timer = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, 10000);
+    window[cb] = data => { cleanup(); resolve(data); };
+    function cleanup() { clearTimeout(timer); delete window[cb]; s.remove(); }
+    s.onerror = () => { cleanup(); reject(new Error('network')); };
+    s.src = url + '&callback=' + cb;
+    document.head.appendChild(s);
+  });
+}
+
+// 검색 결과를 가수 ID별로 묶어 동명이인 후보를 만든다
+function buildCandidates(raw, term) {
+  const nTerm = normalize(term);
+  const groups = new Map();
+  for (const r of raw) {
+    if (!groups.has(r.artistId)) {
+      groups.set(r.artistId, {
+        id: r.artistId,
+        name: r.artistName,
+        genre: r.primaryGenreName || '',
+        art: r.artworkUrl100 ? r.artworkUrl100.replace('100x100', '200x200') : null,
+        count: 0
+      });
+    }
+    groups.get(r.artistId).count++;
+  }
+  const all = [...groups.values()];
+  const exact = all.filter(c => normalize(c.name) === nTerm);
+  const partial = all.filter(c => normalize(c.name).includes(nTerm));
+  const list = exact.length ? exact : partial;
+  return list.sort((a, b) => b.count - a.count).slice(0, 6);
+}
+
+// 가수 후보의 출제용 곡 목록 (합작곡 포함, 중복 제거)
+function buildTracks(raw, cand) {
+  const nName = normalize(cand.name);
+  const seen = new Set();
+  const tracks = [];
+  for (const r of raw) {
+    if (!r.previewUrl) continue;
+    if (r.artistId !== cand.id && !normalize(r.artistName).includes(nName)) continue;
+    const key = normalize(stripParen(r.trackName));
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    tracks.push({
+      title: r.trackName,
+      artist: cand.name,
+      previewUrl: r.previewUrl,
+      year: r.releaseDate ? new Date(r.releaseDate).getFullYear() : null,
+      art: r.artworkUrl100 ? r.artworkUrl100.replace('100x100', '300x300') : null
+    });
+  }
+  return tracks;
+}
+
+// ---------- 정답 판정 ----------
+function normalize(s) {
+  // 공백뿐 아니라 아포스트로피·하이픈 등 특수문자도 무시하고 비교 (Can't Nobody = cant nobody)
+  return (s || '').toLowerCase().replace(/[^a-z0-9가-힣ㄱ-ㆎ]/g, '');
+}
+function stripParen(s) {
+  return (s || '').replace(/\(.*?\)|\[.*?\]|\{.*?\}/g, '').replace(/\s*-\s*(feat|prod)\..*$/i, '');
+}
+function coreTitle(s) {
+  // 괄호와 "곡명 - 부제(OST 등)" 형태의 대시 뒷부분 제거
+  const stripped = stripParen(s).replace(/\s+-\s+.*$/, '').trim();
+  return stripped || stripParen(s).trim() || (s || '').trim();
+}
+function isCorrect(guess, title) {
+  const g = normalize(guess);
+  if (!g) return false;
+  return g === normalize(title) || g === normalize(stripParen(title)) || g === normalize(coreTitle(title));
+}
+
+// ---------- 초성 힌트 ----------
+const CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+function chosungHint(title) {
+  const t = coreTitle(title);
+  // 한글은 초성으로, 영어/숫자는 단어 첫 글자만 공개하고 나머지는 ＿ 처리
+  return t.split(/\s+/).map(word => {
+    let out = '';
+    let revealed = false;
+    for (const ch of word) {
+      const code = ch.charCodeAt(0);
+      if (code >= 0xAC00 && code <= 0xD7A3) {
+        out += CHO[Math.floor((code - 0xAC00) / 588)];
+        revealed = true;
+      } else if (/[a-zA-Z0-9]/.test(ch)) {
+        out += revealed ? '＿' : ch.toUpperCase();
+        revealed = true;
+      } else {
+        out += ch;
+      }
+    }
+    return out;
+  }).join(' ');
+}
+
+// ---------- 게임 상태 ----------
+const state = {
+  tracks: [],
+  remaining: [],
+  current: null,
+  hintSec: 1,      // 다시 듣기마다 1초씩 늘어남
+  answered: false,
+  multi: false,    // 여러 가수 선택 여부 (정답에 가수명 표시)
+  ok: 0, no: 0,
+};
+const audio = new Audio();
+let stopTimer = null;
+let nextLockUntil = 0; // Enter로 제출한 키 입력이 "다음 문제" 버튼까지 눌러버리는 것 방지
+let fullPlaying = false;
+
+// 검색 캐시 & 선택 상태
+let cache = { term: null, raw: null };
+const selected = new Map(); // artistId -> { cand, tracks }
+let lastCandidates = [];
+let rangeShownFor = null;   // 연도 범위를 이미 제시한 선택 조합 서명
+
+const $ = id => document.getElementById(id);
+const signature = () => [...selected.keys()].sort().join(',');
+
+// ---------- 1단계: 검색 & 다중 선택 ----------
+$('searchBtn').addEventListener('click', doSearch);
+$('artistInput').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+['yearFrom', 'yearTo'].forEach(id => {
+  $(id).addEventListener('keydown', e => { if (e.key === 'Enter') startPlay(); });
+});
+$('startBtn').addEventListener('click', startPlay);
+
+$('yearFilterChk').addEventListener('change', () => {
+  $('yearField').style.display = $('yearFilterChk').checked ? 'block' : 'none';
+});
+
+async function doSearch() {
+  const term = $('artistInput').value.trim();
+  const status = $('searchStatus');
+  if (!term) { status.textContent = '가수명을 입력해 주세요.'; status.className = 'status error'; return; }
+
+  $('searchBtn').disabled = true;
+  status.className = 'status';
+  try {
+    if (cache.term !== term) {
+      status.textContent = '검색하는 중...';
+      cache = { term, raw: await fetchSongsRaw(term) };
+    }
+    lastCandidates = buildCandidates(cache.raw, term);
+    if (!lastCandidates.length) {
+      $('artistGrid').style.display = 'none';
+      status.textContent = '가수를 찾지 못했어요. 표기(한글/영문)를 바꿔서 다시 검색해 보세요.';
+      status.className = 'status error';
+      return;
+    }
+    // 후보가 1명이면 자동 선택
+    if (lastCandidates.length === 1 && !selected.has(lastCandidates[0].id)) {
+      toggleSelect(lastCandidates[0]);
+    }
+    renderArtistGrid();
+    status.textContent = lastCandidates.length > 1
+      ? '카드를 눌러 가수를 선택하세요. 여러 명 선택할 수 있어요.'
+      : `${lastCandidates[0].name} 선택됨 · 다른 가수를 더 검색하거나 시작을 누르세요.`;
+  } catch (e) {
+    status.textContent = '검색에 실패했어요. 잠시 후 다시 시도해 주세요.';
+    status.className = 'status error';
+  } finally {
+    $('searchBtn').disabled = false;
+  }
+}
+
+function toggleSelect(cand) {
+  if (selected.has(cand.id)) {
+    selected.delete(cand.id);
+  } else {
+    selected.set(cand.id, { cand, tracks: buildTracks(cache.raw, cand) });
+  }
+  renderChips();
+  updateStartBtn();
+}
+
+function renderArtistGrid() {
+  const grid = $('artistGrid');
+  grid.innerHTML = '';
+  for (const c of lastCandidates) {
+    const el = document.createElement('div');
+    el.className = 'artist-card' + (selected.has(c.id) ? ' selected' : '');
+    el.innerHTML = (c.art
+      ? `<img src="${c.art}" alt="">`
+      : '<div class="no-art">♪</div>')
+      + `<div class="a-name"></div><div class="a-meta"></div>`;
+    el.querySelector('.a-name').textContent = c.name;
+    el.querySelector('.a-meta').textContent = `${c.genre} · ${c.count}곡`;
+    el.addEventListener('click', () => {
+      toggleSelect(c);
+      el.classList.toggle('selected', selected.has(c.id));
+    });
+    grid.appendChild(el);
+  }
+  grid.style.display = 'grid';
+}
+
+function renderChips() {
+  const row = $('selectedRow');
+  row.innerHTML = '';
+  for (const { cand } of selected.values()) {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML = (cand.art ? `<img src="${cand.art}" alt="">` : '<div class="no-art">♪</div>')
+      + `<span class="c-name"></span><span class="x" title="빼기">✕</span>`;
+    chip.querySelector('.c-name').textContent = cand.name;
+    chip.querySelector('.x').addEventListener('click', () => {
+      selected.delete(cand.id);
+      renderChips();
+      renderArtistGrid();
+      updateStartBtn();
+    });
+    row.appendChild(chip);
+  }
+}
+
+function updateStartBtn() {
+  const n = selected.size;
+  $('startBtn').disabled = n === 0;
+  $('startBtn').textContent = n === 0
+    ? '가수를 선택하면 시작할 수 있어요'
+    : `${n}명의 가수로 시작 (${[...selected.values()].reduce((s, v) => s + v.tracks.length, 0)}곡)`;
+}
+
+// ---------- 시작 (연도 필터 2단계 포함) ----------
+function startPlay() {
+  const status = $('searchStatus');
+  if (!selected.size) {
+    status.textContent = '가수를 먼저 검색해서 선택해 주세요.';
+    status.className = 'status error';
+    return;
+  }
+  status.className = 'status';
+
+  // 선택된 모든 가수의 곡 합치기 (가수 간 같은 제목은 각각 유지, 동일 곡만 제거)
+  let tracks = [];
+  const seen = new Set();
+  for (const { cand, tracks: ts } of selected.values()) {
+    for (const t of ts) {
+      const key = cand.id + '|' + normalize(stripParen(t.title));
+      if (seen.has(key)) continue;
+      seen.add(key);
+      tracks.push(t);
+    }
+  }
+  if (tracks.length < 2) {
+    status.textContent = '미리듣기 가능한 곡이 부족해요. 가수를 더 선택해 보세요.';
+    status.className = 'status error';
+    return;
+  }
+
+  let yearFrom = null, yearTo = null;
+  if ($('yearFilterChk').checked) {
+    const years = tracks.map(t => t.year).filter(Boolean);
+    if (!years.length) {
+      status.textContent = '발매 연도 정보가 없어 필터 없이 시작합니다.';
+      status.className = 'status error';
+    } else if (rangeShownFor !== signature()) {
+      // 1단계: 선택한 가수들의 실제 발매 연도 범위를 채워서 보여주고 대기
+      const mn = Math.min(...years), mx = Math.max(...years);
+      $('yearFrom').value = mn;
+      $('yearTo').value = mx;
+      $('yearFrom').min = mn; $('yearFrom').max = mx;
+      $('yearTo').min = mn; $('yearTo').max = mx;
+      rangeShownFor = signature();
+      status.textContent = `선택한 가수들의 곡은 ${mn}~${mx}년에 발매됐어요. 범위를 조정한 뒤 다시 시작을 누르세요.`;
+      $('yearFrom').focus();
+      $('yearFrom').select();
+      return;
+    } else {
+      // 2단계: 조정된 범위 적용
+      yearFrom = parseInt($('yearFrom').value, 10) || null;
+      yearTo = parseInt($('yearTo').value, 10) || null;
+      if (yearFrom && yearTo && yearFrom > yearTo) {
+        status.textContent = '시작 연도가 끝 연도보다 클 수 없어요.';
+        status.className = 'status error';
+        return;
+      }
+      tracks = tracks.filter(t =>
+        t.year && (!yearFrom || t.year >= yearFrom) && (!yearTo || t.year <= yearTo));
+      if (tracks.length < 2) {
+        status.textContent = '해당 연도 범위의 곡이 부족해요. 범위를 넓혀서 다시 시도해 보세요.';
+        status.className = 'status error';
+        return;
+      }
+    }
+  }
+
+  state.tracks = tracks;
+  state.remaining = [];
+  state.multi = selected.size > 1;
+  state.ok = 0; state.no = 0;
+  $('okCount').textContent = 0;
+  $('noCount').textContent = 0;
+
+  // 게임 상단: 가수 이미지 + 이름
+  const avatars = $('gameAvatars');
+  avatars.innerHTML = '';
+  for (const { cand } of selected.values()) {
+    avatars.insertAdjacentHTML('beforeend',
+      cand.art ? `<img src="${cand.art}" alt="" title="${cand.name.replace(/"/g, '&quot;')}">` : '<div class="no-art">♪</div>');
+  }
+  const names = [...selected.values()].map(v => v.cand.name);
+  const nameText = names.length > 2 ? `${names.slice(0, 2).join(', ')} 외 ${names.length - 2}명` : names.join(', ');
+  const yearRange = (yearFrom || yearTo) ? ` · ${yearFrom || '~'}–${yearTo || '~'}` : '';
+  $('artistLabel').textContent = `${nameText}${yearRange} · ${tracks.length}곡`;
+
+  status.textContent = '';
+  $('searchCard').style.display = 'none';
+  $('gameCard').style.display = 'block';
+  nextQuestion();
+}
+
+// ---------- 2단계: 출제 ----------
+function nextQuestion() {
+  if (state.remaining.length === 0) {
+    state.remaining = shuffle([...state.tracks]); // 다 풀면 섞어서 반복
+  }
+  state.current = state.remaining.pop();
+  state.hintSec = 1;
+  state.answered = false;
+  audio.src = state.current.previewUrl;
+  audio.load();
+
+  $('guessInput').value = '';
+  $('guessInput').disabled = false;
+  $('guessBtn').disabled = false;
+  $('replayBtn').disabled = false;
+  $('giveUpBtn').disabled = false;
+  $('hintBtn').disabled = false;
+  $('hintChip').className = 'hint-chip';
+  $('hintChip').textContent = '';
+  $('albumReveal').className = 'album-reveal';
+  stopFullPlay();
+  $('finishRow').style.display = 'none';
+  $('result').className = 'result';
+  $('result').textContent = '';
+  $('playHint').textContent = '버튼을 눌러 전주 1초를 들어보세요';
+  $('guessInput').focus();
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// ---------- 재생 ----------
+function playSnippet() {
+  if (!state.current) return;
+  stopFullPlay();
+  clearTimeout(stopTimer);
+  audio.pause();
+  audio.currentTime = 0;
+  const btn = $('playBtn');
+  audio.play().then(() => {
+    btn.classList.add('playing');
+    stopTimer = setTimeout(() => {
+      audio.pause();
+      btn.classList.remove('playing');
+    }, state.hintSec * 1000);
+  }).catch(() => {
+    $('playHint').textContent = '재생에 실패했어요. 다시 눌러보세요.';
+  });
+  $('playHint').textContent = `${state.hintSec}초 재생 중...`;
+  setTimeout(() => {
+    if (!state.answered) $('playHint').textContent = `현재 힌트 길이: ${state.hintSec}초`;
+  }, state.hintSec * 1000 + 100);
+}
+
+$('playBtn').addEventListener('click', playSnippet);
+$('replayBtn').addEventListener('click', () => {
+  state.hintSec += 1;
+  playSnippet();
+});
+
+// ---------- 초성 힌트 ----------
+$('hintBtn').addEventListener('click', () => {
+  if (!state.current || state.answered) return;
+  $('hintChip').textContent = chosungHint(state.current.title);
+  $('hintChip').className = 'hint-chip show';
+  $('hintBtn').disabled = true;
+});
+
+// ---------- 정답 제출 ----------
+$('guessBtn').addEventListener('click', submitGuess);
+$('guessInput').addEventListener('keydown', e => { if (e.key === 'Enter') submitGuess(); });
+
+function answerLabel() {
+  const t = state.current;
+  const artist = state.multi ? ` – ${t.artist}` : '';
+  const year = t.year ? ` (${t.year})` : '';
+  return `「${t.title}」${artist}${year}`;
+}
+
+function submitGuess() {
+  if (state.answered || !state.current) return;
+  const guess = $('guessInput').value;
+  if (!guess.trim()) return;
+  const result = $('result');
+
+  if (isCorrect(guess, state.current.title)) {
+    state.ok++;
+    $('okCount').textContent = state.ok;
+    result.className = 'result correct';
+    result.textContent = `정답! ${answerLabel()}`;
+    finishQuestion();
+  } else {
+    state.no++;
+    $('noCount').textContent = state.no;
+    result.className = 'result wrong';
+    result.textContent = '오답이에요. 다시 듣고 도전해 보세요.';
+    $('guessInput').select();
+  }
+}
+
+$('giveUpBtn').addEventListener('click', () => {
+  if (state.answered || !state.current) return;
+  state.no++;
+  $('noCount').textContent = state.no;
+  const result = $('result');
+  result.className = 'result reveal';
+  result.textContent = `정답은 ${answerLabel()} 이었어요.`;
+  finishQuestion();
+});
+
+function finishQuestion() {
+  state.answered = true;
+  nextLockUntil = Date.now() + 700;
+  $('guessInput').disabled = true;
+  $('guessBtn').disabled = true;
+  $('giveUpBtn').disabled = true;
+  $('hintBtn').disabled = true;
+  $('finishRow').style.display = 'flex';
+  if (state.current.art) {
+    $('albumArt').src = state.current.art;
+    $('albumReveal').className = 'album-reveal show';
+  }
+  clearTimeout(stopTimer);
+  audio.pause();
+  $('playBtn').classList.remove('playing');
+  $('nextBtn').focus();
+}
+
+$('nextBtn').addEventListener('click', () => {
+  if (Date.now() < nextLockUntil) return;
+  nextQuestion();
+});
+
+// ---------- 정답 확인 후 노래 듣기 (토글) ----------
+function stopFullPlay() {
+  if (!fullPlaying) return;
+  audio.pause();
+  fullPlaying = false;
+  $('fullPlayBtn').textContent = '노래 듣기';
+}
+
+$('fullPlayBtn').addEventListener('click', () => {
+  if (fullPlaying) { stopFullPlay(); return; }
+  clearTimeout(stopTimer);
+  $('playBtn').classList.remove('playing');
+  audio.currentTime = 0;
+  audio.play().then(() => {
+    fullPlaying = true;
+    $('fullPlayBtn').textContent = '멈추기';
+  }).catch(() => {});
+});
+
+audio.addEventListener('ended', stopFullPlay);
+
+$('changeArtistBtn').addEventListener('click', () => {
+  clearTimeout(stopTimer);
+  stopFullPlay();
+  audio.pause();
+  $('gameCard').style.display = 'none';
+  $('searchCard').style.display = 'block';
+  $('artistInput').select();
+});
+</script>
+</body>
+</html>
