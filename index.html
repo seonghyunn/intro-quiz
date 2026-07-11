@@ -144,10 +144,11 @@
     border-radius: 14px;
     border: 2px solid transparent;
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
+    transition: background 0.15s, border-color 0.15s, opacity 0.15s;
     position: relative;
   }
   .artist-card:hover { background: var(--card2); }
+  .artist-card.loading { opacity: 0.5; pointer-events: none; }
   .artist-card.selected { border-color: var(--accent); background: var(--card2); }
   .artist-card.selected::after {
     content: "✓";
@@ -431,7 +432,7 @@
   </header>
 
   <div class="main">
-    <!-- 1단계: 가수 검색 & 선택 -->
+    <!-- 1단계: 가수 검색·선택 -->
     <div class="card" id="searchCard">
       <label for="artistInput">가수명 · 여러 명을 검색해서 함께 선택할 수 있어요</label>
       <div class="row">
@@ -440,16 +441,18 @@
       </div>
       <div class="artist-grid" id="artistGrid" style="display:none"></div>
       <div class="chips" id="selectedRow"></div>
-      <label class="chk-row">
-        <input type="checkbox" id="yearFilterChk">
-        <span>발매 연도로 필터링</span>
-      </label>
-      <div class="field" id="yearField" style="display:none">
-        <label for="yearFrom">발매 연도 범위</label>
-        <div class="row">
-          <input type="number" id="yearFrom" placeholder="시작 연도" min="1950" max="2030">
-          <span class="year-sep">~</span>
-          <input type="number" id="yearTo" placeholder="끝 연도" min="1950" max="2030">
+      <div id="yearWrap">
+        <label class="chk-row">
+          <input type="checkbox" id="yearFilterChk">
+          <span>발매 연도로 필터링</span>
+        </label>
+        <div class="field" id="yearField" style="display:none">
+          <label for="yearFrom">발매 연도 범위</label>
+          <div class="row">
+            <input type="number" id="yearFrom" placeholder="시작 연도" min="1950" max="2030">
+            <span class="year-sep">~</span>
+            <input type="number" id="yearTo" placeholder="끝 연도" min="1950" max="2030">
+          </div>
         </div>
       </div>
       <button class="start-btn" id="startBtn" disabled>가수를 선택하면 시작할 수 있어요</button>
@@ -499,7 +502,7 @@
     </div>
 
     <footer>
-      음원: iTunes 30초 미리듣기 · 로그인 불필요 · v11
+      음원: iTunes 30초 미리듣기 · 로그인 불필요 · v12
     </footer>
   </div>
 </div>
@@ -554,7 +557,6 @@ function applyTheme(bg, accent, save = true) {
   if (save) try { localStorage.setItem('quizTheme', JSON.stringify({ bg, accent })); } catch (e) {}
   document.getElementById('customBg').value = bg;
   document.getElementById('customAccent').value = accent;
-  // 프리셋 활성 표시
   document.querySelectorAll('.tp-swatch').forEach((el, i) => {
     el.classList.toggle('active', PRESETS[i].bg === bg && PRESETS[i].accent === accent);
   });
@@ -592,72 +594,20 @@ function initTheme() {
 }
 initTheme();
 
-// ---------- 음원 소스 어댑터 (멜론 API가 열리면 이 부분만 교체) ----------
-function fetchSongsRaw(term) {
-  const url = 'https://itunes.apple.com/search?media=music&entity=song&country=KR&limit=200&term='
-            + encodeURIComponent(term);
-  return jsonp(url).then(data => (data.results || []).filter(r => r.trackName && r.artistName));
-}
-
+// ---------- 공통 유틸 ----------
 function jsonp(url) {
   return new Promise((resolve, reject) => {
-    const cb = 'itunes_cb_' + Math.random().toString(36).slice(2);
+    const cb = 'music_cb_' + Math.random().toString(36).slice(2);
     const s = document.createElement('script');
     const timer = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, 10000);
     window[cb] = data => { cleanup(); resolve(data); };
     function cleanup() { clearTimeout(timer); delete window[cb]; s.remove(); }
     s.onerror = () => { cleanup(); reject(new Error('network')); };
-    s.src = url + '&callback=' + cb;
+    s.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cb;
     document.head.appendChild(s);
   });
 }
 
-// 검색 결과를 가수 ID별로 묶어 동명이인 후보를 만든다
-function buildCandidates(raw, term) {
-  const nTerm = normalize(term);
-  const groups = new Map();
-  for (const r of raw) {
-    if (!groups.has(r.artistId)) {
-      groups.set(r.artistId, {
-        id: r.artistId,
-        name: r.artistName,
-        genre: r.primaryGenreName || '',
-        art: r.artworkUrl100 ? r.artworkUrl100.replace('100x100', '200x200') : null,
-        count: 0
-      });
-    }
-    groups.get(r.artistId).count++;
-  }
-  const all = [...groups.values()];
-  const exact = all.filter(c => normalize(c.name) === nTerm);
-  const partial = all.filter(c => normalize(c.name).includes(nTerm));
-  const list = exact.length ? exact : partial;
-  return list.sort((a, b) => b.count - a.count).slice(0, 6);
-}
-
-// 가수 후보의 출제용 곡 목록 (합작곡 포함, 중복 제거)
-function buildTracks(raw, cand) {
-  const nName = normalize(cand.name);
-  const seen = new Set();
-  const tracks = [];
-  for (const r of raw) {
-    if (!r.previewUrl) continue;
-    if (r.artistId !== cand.id && !normalize(r.artistName).includes(nName)) continue;
-    const key = normalize(stripParen(r.trackName));
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    tracks.push({
-      title: r.trackName,
-      artist: cand.name,
-      previewUrl: r.previewUrl,
-      year: r.releaseDate ? new Date(r.releaseDate).getFullYear() : null,
-      art: r.artworkUrl100 ? r.artworkUrl100.replace('100x100', '300x300') : null
-    });
-  }
-  return tracks;
-}
-
-// ---------- 정답 판정 ----------
 function normalize(s) {
   // 공백뿐 아니라 아포스트로피·하이픈 등 특수문자도 무시하고 비교 (Can't Nobody = cant nobody)
   return (s || '').toLowerCase().replace(/[^a-z0-9가-힣ㄱ-ㆎ]/g, '');
@@ -700,6 +650,66 @@ function chosungHint(title) {
   }).join(' ');
 }
 
+// ---------- 음원 소스 어댑터 ----------
+// itunes: 곡의 하이라이트 부근 30초 미리듣기 / deezer: 곡의 처음부터 30초 미리듣기
+const SOURCES = {
+  itunes: {
+    desc: 'iTunes 미리듣기 — 곡의 하이라이트 부근을 들려줘요 · 발매 연도 필터 지원',
+    supportsYear: true,
+    _cache: { term: null, raw: null },
+    async searchArtists(term) {
+      if (this._cache.term !== term) {
+        const data = await jsonp('https://itunes.apple.com/search?media=music&entity=song&country=KR&limit=200&term=' + encodeURIComponent(term));
+        this._cache = { term, raw: (data.results || []).filter(r => r.trackName && r.artistName) };
+      }
+      const nTerm = normalize(term);
+      const groups = new Map();
+      for (const r of this._cache.raw) {
+        if (!groups.has(r.artistId)) {
+          groups.set(r.artistId, {
+            id: 'it' + r.artistId,
+            rawId: r.artistId,
+            name: r.artistName,
+            meta: r.primaryGenreName || '',
+            art: r.artworkUrl100 ? r.artworkUrl100.replace('100x100', '200x200') : null,
+            count: 0
+          });
+        }
+        groups.get(r.artistId).count++;
+      }
+      const all = [...groups.values()];
+      all.forEach(c => { c.meta = `${c.meta} · ${c.count}곡`; });
+      const exact = all.filter(c => normalize(c.name) === nTerm);
+      const partial = all.filter(c => normalize(c.name).includes(nTerm));
+      const list = exact.length ? exact : partial;
+      return list.sort((a, b) => b.count - a.count).slice(0, 6);
+    },
+    async tracksFor(cand) {
+      const nName = normalize(cand.name);
+      const seen = new Set();
+      const tracks = [];
+      for (const r of this._cache.raw || []) {
+        if (!r.previewUrl) continue;
+        if (r.artistId !== cand.rawId && !normalize(r.artistName).includes(nName)) continue;
+        const key = normalize(stripParen(r.trackName));
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        tracks.push({
+          title: r.trackName,
+          artist: cand.name,
+          previewUrl: r.previewUrl,
+          year: r.releaseDate ? new Date(r.releaseDate).getFullYear() : null,
+          art: r.artworkUrl100 ? r.artworkUrl100.replace('100x100', '300x300') : null
+        });
+      }
+      return tracks;
+    }
+  }
+  // 참고: "곡 처음부터" 재생용 소스를 여기 추가하려 했으나, Deezer 공개 API가
+  // 인증 없이는 가수당 1~2곡만 반환하도록 제한되어 제외함 (2026-07 확인).
+  // 키 기반 소스(YouTube 등)를 붙일 경우 이 어댑터 구조에 추가하면 됨.
+};
+
 // ---------- 게임 상태 ----------
 const state = {
   tracks: [],
@@ -715,9 +725,8 @@ let stopTimer = null;
 let nextLockUntil = 0; // Enter로 제출한 키 입력이 "다음 문제" 버튼까지 눌러버리는 것 방지
 let fullPlaying = false;
 
-// 검색 캐시 & 선택 상태
-let cache = { term: null, raw: null };
-const selected = new Map(); // artistId -> { cand, tracks }
+let mode = 'itunes';
+const selected = new Map(); // candidate.id -> { cand, tracks }
 let lastCandidates = [];
 let rangeShownFor = null;   // 연도 범위를 이미 제시한 선택 조합 서명
 
@@ -743,26 +752,24 @@ async function doSearch() {
 
   $('searchBtn').disabled = true;
   status.className = 'status';
+  status.textContent = '검색하는 중...';
   try {
-    if (cache.term !== term) {
-      status.textContent = '검색하는 중...';
-      cache = { term, raw: await fetchSongsRaw(term) };
-    }
-    lastCandidates = buildCandidates(cache.raw, term);
+    lastCandidates = await SOURCES[mode].searchArtists(term);
     if (!lastCandidates.length) {
       $('artistGrid').style.display = 'none';
       status.textContent = '가수를 찾지 못했어요. 표기(한글/영문)를 바꿔서 다시 검색해 보세요.';
       status.className = 'status error';
       return;
     }
+    renderArtistGrid();
     // 후보가 1명이면 자동 선택
     if (lastCandidates.length === 1 && !selected.has(lastCandidates[0].id)) {
-      toggleSelect(lastCandidates[0]);
+      await toggleSelect(lastCandidates[0]);
+      renderArtistGrid();
+      status.textContent = `${lastCandidates[0].name} 선택됨 · 다른 가수를 더 검색하거나 시작을 누르세요.`;
+    } else {
+      status.textContent = '카드를 눌러 가수를 선택하세요. 여러 명 선택할 수 있어요.';
     }
-    renderArtistGrid();
-    status.textContent = lastCandidates.length > 1
-      ? '카드를 눌러 가수를 선택하세요. 여러 명 선택할 수 있어요.'
-      : `${lastCandidates[0].name} 선택됨 · 다른 가수를 더 검색하거나 시작을 누르세요.`;
   } catch (e) {
     status.textContent = '검색에 실패했어요. 잠시 후 다시 시도해 주세요.';
     status.className = 'status error';
@@ -771,14 +778,29 @@ async function doSearch() {
   }
 }
 
-function toggleSelect(cand) {
+async function toggleSelect(cand) {
+  const status = $('searchStatus');
   if (selected.has(cand.id)) {
     selected.delete(cand.id);
-  } else {
-    selected.set(cand.id, { cand, tracks: buildTracks(cache.raw, cand) });
+    renderChips();
+    updateStartBtn();
+    return;
   }
-  renderChips();
-  updateStartBtn();
+  try {
+    const tracks = await SOURCES[mode].tracksFor(cand);
+    if (tracks.length < 2) {
+      status.textContent = `${cand.name}의 미리듣기 곡이 부족해서 선택할 수 없어요.`;
+      status.className = 'status error';
+      return;
+    }
+    selected.set(cand.id, { cand, tracks });
+    status.className = 'status';
+    renderChips();
+    updateStartBtn();
+  } catch (e) {
+    status.textContent = '곡 목록을 불러오지 못했어요. 다시 시도해 주세요.';
+    status.className = 'status error';
+  }
 }
 
 function renderArtistGrid() {
@@ -792,9 +814,11 @@ function renderArtistGrid() {
       : '<div class="no-art">♪</div>')
       + `<div class="a-name"></div><div class="a-meta"></div>`;
     el.querySelector('.a-name').textContent = c.name;
-    el.querySelector('.a-meta').textContent = `${c.genre} · ${c.count}곡`;
-    el.addEventListener('click', () => {
-      toggleSelect(c);
+    el.querySelector('.a-meta').textContent = c.meta || '';
+    el.addEventListener('click', async () => {
+      el.classList.add('loading');
+      await toggleSelect(c);
+      el.classList.remove('loading');
       el.classList.toggle('selected', selected.has(c.id));
     });
     grid.appendChild(el);
@@ -857,7 +881,7 @@ function startPlay() {
   }
 
   let yearFrom = null, yearTo = null;
-  if ($('yearFilterChk').checked) {
+  if (SOURCES[mode].supportsYear && $('yearFilterChk').checked) {
     const years = tracks.map(t => t.year).filter(Boolean);
     if (!years.length) {
       status.textContent = '발매 연도 정보가 없어 필터 없이 시작합니다.';
