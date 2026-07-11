@@ -110,6 +110,65 @@
 
   .status { font-size: 13px; color: var(--sub); margin-top: 14px; min-height: 18px; }
   .status.error { color: var(--wrong); }
+  .status.ok { color: var(--green); }
+
+  /* 재생 방식 선택 (세그먼트) */
+  .mode-seg {
+    display: flex;
+    gap: 4px;
+    background: var(--card2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 4px;
+  }
+  .mode-seg button {
+    flex: 1;
+    background: transparent;
+    color: var(--sub);
+    border: none;
+    border-radius: 9px;
+    padding: 10px 6px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .mode-seg button:hover { background: transparent; color: var(--ink); }
+  .mode-seg button.active {
+    background: var(--card);
+    color: var(--ink);
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.12);
+  }
+  .mode-desc {
+    font-size: 12px;
+    color: var(--sub);
+    text-align: center;
+    margin: 8px 0 18px;
+  }
+
+  /* YouTube 키 등록 */
+  #ytKeyBlock {
+    background: var(--card2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 18px;
+  }
+  .yt-guide summary {
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    color: var(--ink);
+  }
+  .yt-guide ol {
+    margin: 10px 0 0 18px;
+    font-size: 13px;
+    line-height: 1.9;
+    color: var(--sub);
+  }
+  .yt-guide a { color: var(--accent); font-weight: 700; }
+  .yt-note { font-size: 12px; color: var(--sub); margin-top: 8px; }
+  #ytKeyBlock .row { margin-top: 12px; }
+  #ytKeyBlock input { font-size: 13px; padding: 10px 12px; }
+  #ytKeyBlock .status { margin-top: 8px; min-height: 0; }
 
   .chk-row {
     display: flex;
@@ -224,7 +283,7 @@
   }
   .chip .x:hover { color: var(--wrong); }
 
-  /* 게임 상단: 선택한 가수들 */
+  /* 게임 상단 */
   #gameCard { display: none; }
   .game-head {
     display: flex;
@@ -233,7 +292,7 @@
     flex-wrap: wrap;
     gap: 10px;
     padding-bottom: 16px;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
     border-bottom: 1px solid var(--line);
   }
   .ga-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -258,6 +317,43 @@
   .score b { font-weight: 700; }
   .score .ok { color: var(--green); }
   .score .no { color: var(--wrong); }
+
+  /* 게임 중 재생 옵션 */
+  .game-opts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .game-opts .mode-seg { flex: 1 1 220px; }
+  .game-opts .mode-seg button { padding: 8px 6px; font-size: 12px; }
+  .dur-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    color: var(--sub);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .dur-row input[type="number"] {
+    width: 62px;
+    flex: none;
+    padding: 8px 10px;
+    font-size: 14px;
+    text-align: center;
+  }
+  .dur-row label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .dur-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
 
   .play-zone { text-align: center; margin: 4px 0 24px; }
   .play-btn {
@@ -340,6 +436,9 @@
     margin-top: 26px;
     line-height: 1.7;
   }
+
+  /* 숨겨진 YouTube 플레이어 (소리만 사용) */
+  #ytWrap { position: fixed; left: -9999px; top: 0; width: 320px; height: 200px; }
 
   /* ---------- 테마 설정 ---------- */
   .theme-btn {
@@ -425,15 +524,41 @@
   </div>
 </div>
 
+<div id="ytWrap"><div id="ytPlayer"></div></div>
+
 <div class="app" id="app">
   <header>
     <h1><span class="sec">1초</span> 노래 맞추기</h1>
-    <p class="tagline">가수를 고르면 그 가수의 곡을 랜덤으로 골라 딱 1초만 들려드려요</p>
+    <p class="tagline">가수를 고르면 그 가수의 곡을 랜덤으로 골라 잠깐만 들려드려요</p>
   </header>
 
   <div class="main">
-    <!-- 1단계: 가수 검색·선택 -->
+    <!-- 1단계: 재생 방식 & 가수 검색·선택 -->
     <div class="card" id="searchCard">
+      <div class="mode-seg" id="segSearch">
+        <button type="button" data-mode="preview">하이라이트 구간</button>
+        <button type="button" data-mode="ytstart">곡 처음부터</button>
+      </div>
+      <div class="mode-desc" id="modeDesc"></div>
+
+      <div id="ytKeyBlock" style="display:none">
+        <details class="yt-guide" id="ytGuide">
+          <summary>YouTube API 키 발급 방법 (무료 · 약 5분)</summary>
+          <ol>
+            <li><a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">① 프로젝트 만들기</a> — 구글 로그인 후 이름은 아무거나 입력하고 "만들기"</li>
+            <li><a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">② YouTube Data API v3 열기</a> — 파란 "사용(Enable)" 버튼 클릭</li>
+            <li><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">③ 사용자 인증 정보 열기</a> — "+ 사용자 인증 정보 만들기" → "API 키" → 생성된 키 복사</li>
+            <li>복사한 키를 아래 칸에 붙여넣고 저장</li>
+          </ol>
+          <p class="yt-note">무료이며 하루 약 100곡 검색 한도가 있어요. 키는 이 브라우저에만 저장되고 어디에도 전송·공개되지 않아요.</p>
+        </details>
+        <div class="row">
+          <input type="text" id="ytKeyInput" placeholder="YouTube API 키 붙여넣기 (AIza...)" autocomplete="off">
+          <button id="ytKeySave">저장</button>
+        </div>
+        <div class="status" id="ytKeyState"></div>
+      </div>
+
       <label for="artistInput">가수명 · 여러 명을 검색해서 함께 선택할 수 있어요</label>
       <div class="row">
         <input type="text" id="artistInput" placeholder="예: 아이유, BTS, 뉴진스" autocomplete="off">
@@ -469,11 +594,22 @@
         <span class="score">정답 <b class="ok" id="okCount">0</b> · 오답 <b class="no" id="noCount">0</b></span>
       </div>
 
+      <div class="game-opts">
+        <div class="mode-seg" id="segGame">
+          <button type="button" data-mode="preview">하이라이트</button>
+          <button type="button" data-mode="ytstart">처음부터</button>
+        </div>
+        <div class="dur-row">
+          재생 <input type="number" id="durInput" value="1" min="0.5" max="15" step="0.5">초
+          <label><input type="checkbox" id="durFix">고정</label>
+        </div>
+      </div>
+
       <div class="play-zone">
         <button class="play-btn" id="playBtn" title="전주 듣기" aria-label="전주 듣기">
           <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8 5.14v13.72c0 .8.87 1.3 1.56.88l11.02-6.86a1.04 1.04 0 0 0 0-1.76L9.56 4.26A1.04 1.04 0 0 0 8 5.14z"/></svg>
         </button>
-        <div class="play-hint" id="playHint">버튼을 눌러 전주 1초를 들어보세요</div>
+        <div class="play-hint" id="playHint">버튼을 눌러 도입부를 들어보세요</div>
       </div>
 
       <div class="hint-chip" id="hintChip"></div>
@@ -488,7 +624,7 @@
       <div class="result" id="result"></div>
 
       <div class="actions">
-        <button class="ghost" id="replayBtn">다시 듣기 +1초</button>
+        <button class="ghost" id="replayBtn">다시 듣기</button>
         <button class="ghost" id="hintBtn">초성 힌트</button>
         <button class="ghost" id="giveUpBtn">정답 공개</button>
       </div>
@@ -502,12 +638,14 @@
     </div>
 
     <footer>
-      음원: iTunes 30초 미리듣기 · 로그인 불필요 · v12
+      음원: iTunes 미리듣기 / YouTube (곡 처음부터 모드) · v13
     </footer>
   </div>
 </div>
 
 <script>
+const $ = id => document.getElementById(id);
+
 // ---------- 테마 ----------
 const PRESETS = [
   { name: '클라우드',  bg: '#f7f5f0', accent: '#e0a922' }, // Pantone 2026 클라우드 댄서 + 버터 옐로우
@@ -650,72 +788,234 @@ function chosungHint(title) {
   }).join(' ');
 }
 
-// ---------- 음원 소스 어댑터 ----------
-// itunes: 곡의 하이라이트 부근 30초 미리듣기 / deezer: 곡의 처음부터 30초 미리듣기
-const SOURCES = {
-  itunes: {
-    desc: 'iTunes 미리듣기 — 곡의 하이라이트 부근을 들려줘요 · 발매 연도 필터 지원',
-    supportsYear: true,
-    _cache: { term: null, raw: null },
-    async searchArtists(term) {
-      if (this._cache.term !== term) {
-        const data = await jsonp('https://itunes.apple.com/search?media=music&entity=song&country=KR&limit=200&term=' + encodeURIComponent(term));
-        this._cache = { term, raw: (data.results || []).filter(r => r.trackName && r.artistName) };
-      }
-      const nTerm = normalize(term);
-      const groups = new Map();
-      for (const r of this._cache.raw) {
-        if (!groups.has(r.artistId)) {
-          groups.set(r.artistId, {
-            id: 'it' + r.artistId,
-            rawId: r.artistId,
-            name: r.artistName,
-            meta: r.primaryGenreName || '',
-            art: r.artworkUrl100 ? r.artworkUrl100.replace('100x100', '200x200') : null,
-            count: 0
-          });
-        }
-        groups.get(r.artistId).count++;
-      }
-      const all = [...groups.values()];
-      all.forEach(c => { c.meta = `${c.meta} · ${c.count}곡`; });
-      const exact = all.filter(c => normalize(c.name) === nTerm);
-      const partial = all.filter(c => normalize(c.name).includes(nTerm));
-      const list = exact.length ? exact : partial;
-      return list.sort((a, b) => b.count - a.count).slice(0, 6);
-    },
-    async tracksFor(cand) {
-      const nName = normalize(cand.name);
-      const seen = new Set();
-      const tracks = [];
-      for (const r of this._cache.raw || []) {
-        if (!r.previewUrl) continue;
-        if (r.artistId !== cand.rawId && !normalize(r.artistName).includes(nName)) continue;
-        const key = normalize(stripParen(r.trackName));
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        tracks.push({
-          title: r.trackName,
-          artist: cand.name,
-          previewUrl: r.previewUrl,
-          year: r.releaseDate ? new Date(r.releaseDate).getFullYear() : null,
-          art: r.artworkUrl100 ? r.artworkUrl100.replace('100x100', '300x300') : null
+// ---------- 곡 목록 (iTunes — 메타데이터·미리듣기) ----------
+const itunes = {
+  _cache: { term: null, raw: null },
+  async searchArtists(term) {
+    if (this._cache.term !== term) {
+      const data = await jsonp('https://itunes.apple.com/search?media=music&entity=song&country=KR&limit=200&term=' + encodeURIComponent(term));
+      this._cache = { term, raw: (data.results || []).filter(r => r.trackName && r.artistName) };
+    }
+    const nTerm = normalize(term);
+    const groups = new Map();
+    for (const r of this._cache.raw) {
+      if (!groups.has(r.artistId)) {
+        groups.set(r.artistId, {
+          id: r.artistId,
+          name: r.artistName,
+          meta: r.primaryGenreName || '',
+          art: r.artworkUrl100 ? r.artworkUrl100.replace('100x100', '200x200') : null,
+          count: 0
         });
       }
-      return tracks;
+      groups.get(r.artistId).count++;
+    }
+    const all = [...groups.values()];
+    all.forEach(c => { c.meta = `${c.meta} · ${c.count}곡`; });
+    const exact = all.filter(c => normalize(c.name) === nTerm);
+    const partial = all.filter(c => normalize(c.name).includes(nTerm));
+    const list = exact.length ? exact : partial;
+    return list.sort((a, b) => b.count - a.count).slice(0, 6);
+  },
+  tracksFor(cand) {
+    const nName = normalize(cand.name);
+    const seen = new Set();
+    const tracks = [];
+    for (const r of this._cache.raw || []) {
+      if (!r.previewUrl) continue;
+      if (r.artistId !== cand.id && !normalize(r.artistName).includes(nName)) continue;
+      const key = normalize(stripParen(r.trackName));
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      tracks.push({
+        title: r.trackName,
+        artist: cand.name,
+        previewUrl: r.previewUrl,
+        year: r.releaseDate ? new Date(r.releaseDate).getFullYear() : null,
+        art: r.artworkUrl100 ? r.artworkUrl100.replace('100x100', '300x300') : null
+      });
+    }
+    return tracks;
+  }
+};
+
+// ---------- 재생 방식: preview(하이라이트) / ytstart(곡 처음부터, YouTube) ----------
+let playMode = 'preview';
+let ytKey = '';
+try {
+  playMode = localStorage.getItem('quizPlayMode') || 'preview';
+  ytKey = localStorage.getItem('quizYtKey') || '';
+} catch (e) {}
+
+const MODE_DESC = {
+  preview: 'iTunes 미리듣기 — 곡의 하이라이트 부근을 들려줘요 · 준비 없이 바로 시작',
+  ytstart: 'YouTube — 곡의 진짜 첫 부분(전주)부터 들려줘요 · 본인의 무료 API 키 필요'
+};
+
+function setPlayMode(m, save = true) {
+  playMode = m;
+  if (save) try { localStorage.setItem('quizPlayMode', m); } catch (e) {}
+  document.querySelectorAll('#segSearch button, #segGame button').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === m);
+  });
+  $('modeDesc').textContent = MODE_DESC[m];
+  $('ytKeyBlock').style.display = m === 'ytstart' ? 'block' : 'none';
+  if (m === 'ytstart') refreshYtKeyState();
+  stopAllSound();
+  // 현재 문제의 영상 미리 찾아두기 (재생 지연 최소화)
+  if (m === 'ytstart' && ytKey && state.current) ytFind(state.current).catch(() => {});
+}
+
+document.querySelectorAll('#segSearch button, #segGame button').forEach(b => {
+  b.addEventListener('click', () => {
+    if (b.dataset.mode === playMode) return;
+    if (b.dataset.mode === 'ytstart' && !ytKey && b.closest('#segGame')) {
+      $('playHint').textContent = 'YouTube API 키가 필요해요. "가수 다시 고르기" 화면에서 등록해 주세요.';
+    }
+    setPlayMode(b.dataset.mode);
+  });
+});
+
+// ---------- YouTube 키 등록 ----------
+function refreshYtKeyState() {
+  const st = $('ytKeyState');
+  if (ytKey) {
+    st.textContent = '✓ 키가 등록되어 있어요. 바꾸려면 새 키를 붙여넣고 저장하세요.';
+    st.className = 'status ok';
+    $('ytGuide').open = false;
+  } else {
+    st.textContent = '아직 키가 없어요. 위 안내를 따라 발급해 주세요.';
+    st.className = 'status';
+    $('ytGuide').open = true;
+  }
+}
+
+$('ytKeySave').addEventListener('click', async () => {
+  const key = $('ytKeyInput').value.trim();
+  const st = $('ytKeyState');
+  if (!key) { st.textContent = '키를 붙여넣어 주세요.'; st.className = 'status error'; return; }
+  st.textContent = '키를 확인하는 중...';
+  st.className = 'status';
+  $('ytKeySave').disabled = true;
+  try {
+    const r = await fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=test&key=' + encodeURIComponent(key));
+    const data = await r.json();
+    if (data.error) throw new Error(ytErrorText(data.error));
+    ytKey = key;
+    try { localStorage.setItem('quizYtKey', key); } catch (e) {}
+    $('ytKeyInput').value = '';
+    st.textContent = '✓ 키가 확인되어 저장됐어요! 이제 곡 처음부터 들을 수 있어요.';
+    st.className = 'status ok';
+    $('ytGuide').open = false;
+  } catch (e) {
+    st.textContent = '키 확인 실패: ' + e.message;
+    st.className = 'status error';
+  } finally {
+    $('ytKeySave').disabled = false;
+  }
+});
+
+function ytErrorText(err) {
+  const reason = err.errors && err.errors[0] && err.errors[0].reason;
+  if (reason === 'quotaExceeded') return '오늘의 무료 검색 한도를 모두 썼어요. 내일 다시 시도하거나 하이라이트 모드를 이용하세요.';
+  if (reason === 'keyInvalid' || err.code === 400) return '키가 올바르지 않아요. 다시 확인해 주세요.';
+  if (err.code === 403) return 'YouTube Data API v3가 사용 설정되지 않았거나 키에 권한이 없어요. 안내 ②번을 확인해 주세요.';
+  return err.message || '알 수 없는 오류';
+}
+
+// ---------- YouTube 플레이어 (숨김, 소리만) ----------
+let ytPlayer = null, ytReady = false, ytApiRequested = false;
+let ytStopTimer = null, pendingStopAfter = null;
+let ytLoadedKey = null; // 현재 플레이어에 로드된 곡
+const ytIdCache = new Map();
+
+function ensureYtPlayer() {
+  return new Promise((resolve, reject) => {
+    if (ytReady) return resolve();
+    const t = setTimeout(() => reject(new Error('YouTube 플레이어 로드 실패')), 12000);
+    const create = () => {
+      ytPlayer = new YT.Player('ytPlayer', {
+        width: '320', height: '200',
+        playerVars: { controls: 0, disablekb: 1, playsinline: 1, origin: location.origin },
+        events: {
+          onReady: () => { ytReady = true; clearTimeout(t); resolve(); },
+          onStateChange: onYtState
+        }
+      });
+    };
+    if (window.YT && window.YT.Player) { create(); return; }
+    window.onYouTubeIframeAPIReady = create;
+    if (!ytApiRequested) {
+      ytApiRequested = true;
+      const s = document.createElement('script');
+      s.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(s);
+    }
+  });
+}
+
+function onYtState(e) {
+  if (e.data === YT.PlayerState.PLAYING) {
+    $('playBtn').classList.add('playing');
+    if (pendingStopAfter != null) {
+      clearTimeout(ytStopTimer);
+      ytStopTimer = setTimeout(() => {
+        try { ytPlayer.pauseVideo(); } catch (err) {}
+        $('playBtn').classList.remove('playing');
+      }, pendingStopAfter * 1000);
+      pendingStopAfter = null;
     }
   }
-  // 참고: "곡 처음부터" 재생용 소스를 여기 추가하려 했으나, Deezer 공개 API가
-  // 인증 없이는 가수당 1~2곡만 반환하도록 제한되어 제외함 (2026-07 확인).
-  // 키 기반 소스(YouTube 등)를 붙일 경우 이 어댑터 구조에 추가하면 됨.
-};
+  if (e.data === YT.PlayerState.PAUSED || e.data === YT.PlayerState.ENDED) {
+    $('playBtn').classList.remove('playing');
+    if (e.data === YT.PlayerState.ENDED) stopFullPlay();
+  }
+}
+
+async function ytFind(track) {
+  const key = normalize(track.artist) + '|' + normalize(coreTitle(track.title));
+  if (ytIdCache.has(key)) return ytIdCache.get(key);
+  const q = `${track.artist} ${coreTitle(track.title)} official audio`;
+  const r = await fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&maxResults=1&q='
+    + encodeURIComponent(q) + '&key=' + encodeURIComponent(ytKey));
+  const data = await r.json();
+  if (data.error) throw new Error(ytErrorText(data.error));
+  const vid = data.items && data.items[0] && data.items[0].id && data.items[0].id.videoId;
+  if (!vid) throw new Error('이 곡의 영상을 찾지 못했어요.');
+  ytIdCache.set(key, vid);
+  return vid;
+}
+
+async function ytPlayFromStart(track, stopAfterSec) {
+  const vid = await ytFind(track);
+  await ensureYtPlayer();
+  audio.pause();
+  clearTimeout(ytStopTimer);
+  pendingStopAfter = stopAfterSec; // null이면 끝까지 재생
+  const key = normalize(track.artist) + '|' + normalize(coreTitle(track.title));
+  if (ytLoadedKey === key) {
+    ytPlayer.seekTo(0, true);
+    ytPlayer.playVideo();
+  } else {
+    ytPlayer.loadVideoById({ videoId: vid, startSeconds: 0 });
+    ytLoadedKey = key;
+  }
+}
+
+function stopAllSound() {
+  clearTimeout(stopTimer);
+  clearTimeout(ytStopTimer);
+  pendingStopAfter = null;
+  audio.pause();
+  if (ytPlayer && ytReady) try { ytPlayer.pauseVideo(); } catch (e) {}
+  $('playBtn').classList.remove('playing');
+}
 
 // ---------- 게임 상태 ----------
 const state = {
   tracks: [],
   remaining: [],
   current: null,
-  hintSec: 1,      // 다시 듣기마다 1초씩 늘어남
   answered: false,
   multi: false,    // 여러 가수 선택 여부 (정답에 가수명 표시)
   ok: 0, no: 0,
@@ -725,13 +1025,35 @@ let stopTimer = null;
 let nextLockUntil = 0; // Enter로 제출한 키 입력이 "다음 문제" 버튼까지 눌러버리는 것 방지
 let fullPlaying = false;
 
-let mode = 'itunes';
 const selected = new Map(); // candidate.id -> { cand, tracks }
 let lastCandidates = [];
 let rangeShownFor = null;   // 연도 범위를 이미 제시한 선택 조합 서명
 
-const $ = id => document.getElementById(id);
 const signature = () => [...selected.keys()].sort().join(',');
+
+// ---------- 재생 시간 설정 ----------
+function getDur() {
+  let v = parseFloat($('durInput').value);
+  if (!isFinite(v)) v = 1;
+  v = Math.min(15, Math.max(0.5, v));
+  $('durInput').value = v;
+  return v;
+}
+function saveDurPrefs() {
+  try {
+    localStorage.setItem('quizDur', $('durInput').value);
+    localStorage.setItem('quizDurFix', $('durFix').checked ? '1' : '');
+  } catch (e) {}
+}
+$('durInput').addEventListener('change', () => { getDur(); saveDurPrefs(); });
+$('durFix').addEventListener('change', saveDurPrefs);
+try {
+  if (localStorage.getItem('quizDurFix')) {
+    $('durFix').checked = true;
+    const d = parseFloat(localStorage.getItem('quizDur'));
+    if (isFinite(d)) $('durInput').value = d;
+  }
+} catch (e) {}
 
 // ---------- 1단계: 검색 & 다중 선택 ----------
 $('searchBtn').addEventListener('click', doSearch);
@@ -754,22 +1076,20 @@ async function doSearch() {
   status.className = 'status';
   status.textContent = '검색하는 중...';
   try {
-    lastCandidates = await SOURCES[mode].searchArtists(term);
+    lastCandidates = await itunes.searchArtists(term);
     if (!lastCandidates.length) {
       $('artistGrid').style.display = 'none';
       status.textContent = '가수를 찾지 못했어요. 표기(한글/영문)를 바꿔서 다시 검색해 보세요.';
       status.className = 'status error';
       return;
     }
-    renderArtistGrid();
-    // 후보가 1명이면 자동 선택
     if (lastCandidates.length === 1 && !selected.has(lastCandidates[0].id)) {
-      await toggleSelect(lastCandidates[0]);
-      renderArtistGrid();
-      status.textContent = `${lastCandidates[0].name} 선택됨 · 다른 가수를 더 검색하거나 시작을 누르세요.`;
-    } else {
-      status.textContent = '카드를 눌러 가수를 선택하세요. 여러 명 선택할 수 있어요.';
+      toggleSelect(lastCandidates[0]);
     }
+    renderArtistGrid();
+    status.textContent = lastCandidates.length > 1
+      ? '카드를 눌러 가수를 선택하세요. 여러 명 선택할 수 있어요.'
+      : `${lastCandidates[0].name} 선택됨 · 다른 가수를 더 검색하거나 시작을 누르세요.`;
   } catch (e) {
     status.textContent = '검색에 실패했어요. 잠시 후 다시 시도해 주세요.';
     status.className = 'status error';
@@ -778,29 +1098,21 @@ async function doSearch() {
   }
 }
 
-async function toggleSelect(cand) {
+function toggleSelect(cand) {
   const status = $('searchStatus');
   if (selected.has(cand.id)) {
     selected.delete(cand.id);
-    renderChips();
-    updateStartBtn();
-    return;
-  }
-  try {
-    const tracks = await SOURCES[mode].tracksFor(cand);
+  } else {
+    const tracks = itunes.tracksFor(cand);
     if (tracks.length < 2) {
       status.textContent = `${cand.name}의 미리듣기 곡이 부족해서 선택할 수 없어요.`;
       status.className = 'status error';
       return;
     }
     selected.set(cand.id, { cand, tracks });
-    status.className = 'status';
-    renderChips();
-    updateStartBtn();
-  } catch (e) {
-    status.textContent = '곡 목록을 불러오지 못했어요. 다시 시도해 주세요.';
-    status.className = 'status error';
   }
+  renderChips();
+  updateStartBtn();
 }
 
 function renderArtistGrid() {
@@ -815,10 +1127,8 @@ function renderArtistGrid() {
       + `<div class="a-name"></div><div class="a-meta"></div>`;
     el.querySelector('.a-name').textContent = c.name;
     el.querySelector('.a-meta').textContent = c.meta || '';
-    el.addEventListener('click', async () => {
-      el.classList.add('loading');
-      await toggleSelect(c);
-      el.classList.remove('loading');
+    el.addEventListener('click', () => {
+      toggleSelect(c);
       el.classList.toggle('selected', selected.has(c.id));
     });
     grid.appendChild(el);
@@ -861,6 +1171,11 @@ function startPlay() {
     status.className = 'status error';
     return;
   }
+  if (playMode === 'ytstart' && !ytKey) {
+    status.textContent = '곡 처음부터 모드는 YouTube API 키가 필요해요. 위 안내를 따라 등록하거나 하이라이트 모드로 바꿔주세요.';
+    status.className = 'status error';
+    return;
+  }
   status.className = 'status';
 
   // 선택된 모든 가수의 곡 합치기 (가수 간 같은 제목은 각각 유지, 동일 곡만 제거)
@@ -881,7 +1196,7 @@ function startPlay() {
   }
 
   let yearFrom = null, yearTo = null;
-  if (SOURCES[mode].supportsYear && $('yearFilterChk').checked) {
+  if ($('yearFilterChk').checked) {
     const years = tracks.map(t => t.year).filter(Boolean);
     if (!years.length) {
       status.textContent = '발매 연도 정보가 없어 필터 없이 시작합니다.';
@@ -948,10 +1263,15 @@ function nextQuestion() {
     state.remaining = shuffle([...state.tracks]); // 다 풀면 섞어서 반복
   }
   state.current = state.remaining.pop();
-  state.hintSec = 1;
   state.answered = false;
   audio.src = state.current.previewUrl;
   audio.load();
+  stopAllSound();
+  ytLoadedKey = null;
+  // 재생 시간: 고정이 아니면 기본 1초로 초기화
+  if (!$('durFix').checked) $('durInput').value = 1;
+  // 곡 처음부터 모드면 영상 미리 찾아두기 (재생 지연 최소화)
+  if (playMode === 'ytstart' && ytKey) ytFind(state.current).catch(() => {});
 
   $('guessInput').value = '';
   $('guessInput').disabled = false;
@@ -962,11 +1282,12 @@ function nextQuestion() {
   $('hintChip').className = 'hint-chip';
   $('hintChip').textContent = '';
   $('albumReveal').className = 'album-reveal';
-  stopFullPlay();
+  fullPlaying = false;
+  $('fullPlayBtn').textContent = '노래 듣기';
   $('finishRow').style.display = 'none';
   $('result').className = 'result';
   $('result').textContent = '';
-  $('playHint').textContent = '버튼을 눌러 전주 1초를 들어보세요';
+  $('playHint').textContent = '버튼을 눌러 도입부를 들어보세요';
   $('guessInput').focus();
 }
 
@@ -979,11 +1300,28 @@ function shuffle(arr) {
 }
 
 // ---------- 재생 ----------
-function playSnippet() {
+async function playSnippet() {
   if (!state.current) return;
   stopFullPlay();
-  clearTimeout(stopTimer);
-  audio.pause();
+  stopAllSound();
+  const dur = getDur();
+
+  if (playMode === 'ytstart') {
+    if (!ytKey) {
+      $('playHint').textContent = 'YouTube API 키가 필요해요. "가수 다시 고르기" 화면에서 등록해 주세요.';
+      return;
+    }
+    $('playHint').textContent = '영상을 찾는 중...';
+    try {
+      await ytPlayFromStart(state.current, dur);
+      $('playHint').textContent = `곡 처음부터 ${dur}초 재생 중...`;
+    } catch (e) {
+      $('playHint').textContent = e.message;
+    }
+    return;
+  }
+
+  // 하이라이트(iTunes 미리듣기) 모드
   audio.currentTime = 0;
   const btn = $('playBtn');
   audio.play().then(() => {
@@ -991,21 +1329,15 @@ function playSnippet() {
     stopTimer = setTimeout(() => {
       audio.pause();
       btn.classList.remove('playing');
-    }, state.hintSec * 1000);
+    }, dur * 1000);
   }).catch(() => {
     $('playHint').textContent = '재생에 실패했어요. 다시 눌러보세요.';
   });
-  $('playHint').textContent = `${state.hintSec}초 재생 중...`;
-  setTimeout(() => {
-    if (!state.answered) $('playHint').textContent = `현재 힌트 길이: ${state.hintSec}초`;
-  }, state.hintSec * 1000 + 100);
+  $('playHint').textContent = `${dur}초 재생 중...`;
 }
 
 $('playBtn').addEventListener('click', playSnippet);
-$('replayBtn').addEventListener('click', () => {
-  state.hintSec += 1;
-  playSnippet();
-});
+$('replayBtn').addEventListener('click', playSnippet);
 
 // ---------- 초성 힌트 ----------
 $('hintBtn').addEventListener('click', () => {
@@ -1069,9 +1401,7 @@ function finishQuestion() {
     $('albumArt').src = state.current.art;
     $('albumReveal').className = 'album-reveal show';
   }
-  clearTimeout(stopTimer);
-  audio.pause();
-  $('playBtn').classList.remove('playing');
+  stopAllSound();
   $('nextBtn').focus();
 }
 
@@ -1083,15 +1413,25 @@ $('nextBtn').addEventListener('click', () => {
 // ---------- 정답 확인 후 노래 듣기 (토글) ----------
 function stopFullPlay() {
   if (!fullPlaying) return;
-  audio.pause();
   fullPlaying = false;
+  audio.pause();
+  if (ytPlayer && ytReady) try { ytPlayer.pauseVideo(); } catch (e) {}
   $('fullPlayBtn').textContent = '노래 듣기';
 }
 
-$('fullPlayBtn').addEventListener('click', () => {
+$('fullPlayBtn').addEventListener('click', async () => {
   if (fullPlaying) { stopFullPlay(); return; }
-  clearTimeout(stopTimer);
-  $('playBtn').classList.remove('playing');
+  stopAllSound();
+  if (playMode === 'ytstart' && ytKey) {
+    try {
+      await ytPlayFromStart(state.current, null); // 끝까지 재생
+      fullPlaying = true;
+      $('fullPlayBtn').textContent = '멈추기';
+    } catch (e) {
+      $('playHint').textContent = e.message;
+    }
+    return;
+  }
   audio.currentTime = 0;
   audio.play().then(() => {
     fullPlaying = true;
@@ -1102,13 +1442,15 @@ $('fullPlayBtn').addEventListener('click', () => {
 audio.addEventListener('ended', stopFullPlay);
 
 $('changeArtistBtn').addEventListener('click', () => {
-  clearTimeout(stopTimer);
+  stopAllSound();
   stopFullPlay();
-  audio.pause();
   $('gameCard').style.display = 'none';
   $('searchCard').style.display = 'block';
   $('artistInput').select();
 });
+
+// 저장된 재생 방식 복원 (초기화)
+setPlayMode(playMode === 'ytstart' ? 'ytstart' : 'preview', false);
 </script>
 </body>
 </html>
