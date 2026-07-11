@@ -538,7 +538,7 @@
       <div class="mode-seg" id="segSearch">
         <button type="button" data-mode="preview">하이라이트</button>
         <button type="button" data-mode="mvstart">MV 처음부터</button>
-        <button type="button" data-mode="ytstart">YT 처음부터</button>
+        <button type="button" data-mode="ytstart">처음부터</button>
       </div>
       <div class="mode-desc" id="modeDesc"></div>
 
@@ -600,7 +600,7 @@
         <div class="mode-seg" id="segGame">
           <button type="button" data-mode="preview">하이라이트</button>
           <button type="button" data-mode="mvstart">MV 처음부터</button>
-          <button type="button" data-mode="ytstart">YT 처음부터</button>
+          <button type="button" data-mode="ytstart">처음부터</button>
         </div>
         <div class="dur-row">
           재생 <input type="number" id="durInput" value="1" min="0.5" max="15" step="0.5">초
@@ -641,7 +641,7 @@
     </div>
 
     <footer>
-      음원: iTunes 미리듣기 (하이라이트/MV) · YouTube 공식음원 · v15
+      음원: iTunes 미리듣기 (하이라이트/MV) · 유튜브 공식 음원 (처음부터) · v15.1
     </footer>
   </div>
 </div>
@@ -877,7 +877,7 @@ try {
 const MODE_DESC = {
   preview: 'iTunes 노래 미리듣기 — 곡의 하이라이트 부근 · 준비 없이 바로 시작',
   mvstart: '뮤직비디오 미리듣기 — 곡의 첫 부분부터 · 광고 없음 · MV 있는 곡만 출제',
-  ytstart: 'YouTube 공식음원 — 진짜 곡 처음부터 · 무료 API 키 필요 · 광고가 걸리면 광고 소리가 먼저 나올 수 있어요'
+  ytstart: '유튜브 공식 음원으로 진짜 곡 처음부터 들려줘요 · 무료 API 키 필요 · 유튜브 프리미엄으로 로그인된 브라우저는 광고가 없고, 아니면 광고가 나올 수 있어요'
 };
 
 function setPlayMode(m, save = true) {
@@ -1211,7 +1211,7 @@ function startPlay() {
     return;
   }
   if (playMode === 'ytstart' && !ytKey) {
-    status.textContent = 'YT 처음부터 모드는 YouTube API 키가 필요해요. 위 안내를 따라 등록하거나 다른 모드로 바꿔주세요.';
+    status.textContent = '처음부터 모드는 YouTube API 키가 필요해요. 위 안내를 따라 등록하거나 다른 모드로 바꿔주세요.';
     status.className = 'status error';
     return;
   }
