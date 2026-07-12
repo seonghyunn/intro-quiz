@@ -641,7 +641,7 @@
     </div>
 
     <footer>
-      음원: iTunes 미리듣기 (하이라이트/MV) · 유튜브 공식 음원 (처음부터) · v15.3
+      음원: iTunes 미리듣기 (하이라이트/MV) · 유튜브 공식 음원 (처음부터) · v16
     </footer>
   </div>
 </div>
@@ -749,25 +749,28 @@ function jsonp(url) {
   });
 }
 
-// iTunes 검색: 기본 경로가 막히면(모바일 통신망의 IP 공유로 요청 제한에 걸리는 경우 등)
-// 공개 중계 서버를 거쳐 한 번 더 시도한다
+// iTunes 검색: 3단 폴백
+// 1) 애플 직통 (PC 등 막히지 않은 네트워크 — 가장 빠름)
+// 2) Deno 중계 — 전체 200곡 그대로 통과 (모바일 통신망처럼 애플이 IP를 막은 경우)
+// 3) allorigins 중계 — 60곡 축소 (최후의 보루)
+function relayFetch(url, timeoutMs) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  return fetch(url, { signal: ctrl.signal })
+    .then(r => { if (!r.ok) throw new Error('s' + r.status); return r.json(); })
+    .finally(() => clearTimeout(t));
+}
+
 async function itunesSearch(params) {
+  const url = 'https://itunes.apple.com/search?' + params;
   try {
-    return await jsonp('https://itunes.apple.com/search?' + params);
-  } catch (e) {
-    // 중계 서버는 큰 응답을 처리하지 못하므로 요청 곡 수를 60으로 줄여서 재시도
-    const smaller = params.replace(/limit=\d+/, 'limit=60');
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 15000);
-    try {
-      const r = await fetch('https://api.allorigins.win/raw?url='
-        + encodeURIComponent('https://itunes.apple.com/search?' + smaller), { signal: ctrl.signal });
-      if (!r.ok) throw new Error('network');
-      return await r.json();
-    } finally {
-      clearTimeout(t);
-    }
-  }
+    return await jsonp(url);
+  } catch (e1) {}
+  try {
+    return await relayFetch('https://corsproxy.deno.dev/?url=' + encodeURIComponent(url), 12000);
+  } catch (e2) {}
+  const smaller = 'https://itunes.apple.com/search?' + params.replace(/limit=\d+/, 'limit=60');
+  return await relayFetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(smaller), 15000);
 }
 
 function normalize(s) {
