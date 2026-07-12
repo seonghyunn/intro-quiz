@@ -132,6 +132,11 @@
     font-weight: 700;
   }
   .mode-seg button:hover { background: transparent; color: var(--ink); }
+  .mode-seg button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    background: transparent;
+  }
   .mode-seg button.active {
     background: var(--card);
     color: var(--ink);
@@ -537,8 +542,8 @@
     <div class="card" id="searchCard">
       <div class="mode-seg" id="segSearch">
         <button type="button" data-mode="preview">하이라이트</button>
-        <button type="button" data-mode="mvstart">MV 처음부터</button>
-        <button type="button" data-mode="ytstart">처음부터</button>
+        <button type="button" data-mode="mvstart" disabled title="준비 중">MV 처음부터</button>
+        <button type="button" data-mode="ytstart" disabled title="준비 중">처음부터</button>
       </div>
       <div class="mode-desc" id="modeDesc"></div>
 
@@ -599,8 +604,8 @@
       <div class="game-opts">
         <div class="mode-seg" id="segGame">
           <button type="button" data-mode="preview">하이라이트</button>
-          <button type="button" data-mode="mvstart">MV 처음부터</button>
-          <button type="button" data-mode="ytstart">처음부터</button>
+          <button type="button" data-mode="mvstart" disabled title="준비 중">MV 처음부터</button>
+          <button type="button" data-mode="ytstart" disabled title="준비 중">처음부터</button>
         </div>
         <div class="dur-row">
           재생 <input type="number" id="durInput" value="1" min="0.5" max="15" step="0.5">초
@@ -641,7 +646,7 @@
     </div>
 
     <footer>
-      음원: iTunes 미리듣기 (하이라이트/MV) · 유튜브 공식 음원 (처음부터) · v16
+      v17
     </footer>
   </div>
 </div>
@@ -761,16 +766,30 @@ function relayFetch(url, timeoutMs) {
     .finally(() => clearTimeout(t));
 }
 
+function shortErr(e) {
+  const s = String((e && e.message) || e);
+  if (/abort/i.test(s)) return '시간초과';
+  if (/^s\d+/.test(s)) return '거부(' + s.slice(1) + ')';
+  if (/timeout/.test(s)) return '시간초과';
+  return '연결실패';
+}
+
 async function itunesSearch(params) {
   const url = 'https://itunes.apple.com/search?' + params;
+  const steps = [];
   try {
     return await jsonp(url);
-  } catch (e1) {}
+  } catch (e) { steps.push('직통:' + shortErr(e)); }
+  for (let i = 1; i <= 2; i++) {
+    try {
+      return await relayFetch('https://corsproxy.deno.dev/?url=' + encodeURIComponent(url), 15000);
+    } catch (e) { steps.push('중계1-' + i + ':' + shortErr(e)); }
+  }
   try {
-    return await relayFetch('https://corsproxy.deno.dev/?url=' + encodeURIComponent(url), 12000);
-  } catch (e2) {}
-  const smaller = 'https://itunes.apple.com/search?' + params.replace(/limit=\d+/, 'limit=60');
-  return await relayFetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(smaller), 15000);
+    const smaller = 'https://itunes.apple.com/search?' + params.replace(/limit=\d+/, 'limit=60');
+    return await relayFetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(smaller), 15000);
+  } catch (e) { steps.push('중계2:' + shortErr(e)); }
+  throw new Error(steps.join(' · '));
 }
 
 function normalize(s) {
@@ -848,6 +867,7 @@ const itunes = {
   },
   // 가수의 뮤직비디오 미리듣기 목록 (제목 키 -> URL). MV는 US 스토어에만 있음
   async mvMapFor(name) {
+    if (!MV_ENABLED) return new Map(); // MV 모드 비활성화 중 — 불필요한 요청 생략(검색 속도 향상)
     if (this._mvCache.has(name)) return this._mvCache.get(name);
     const map = new Map();
     try {
@@ -890,11 +910,10 @@ const itunes = {
 };
 
 // ---------- 재생 방식: preview / mvstart(MV 도입부) / ytstart(YouTube 공식음원 처음부터) ----------
-let playMode = 'preview';
+const MV_ENABLED = false; // MV·YT 처음부터 모드 잠금 (하이라이트만 사용)
+let playMode = 'preview'; // 저장된 모드가 있어도 잠금 중에는 하이라이트로 고정
 let ytKey = '';
 try {
-  const saved = localStorage.getItem('quizPlayMode');
-  if (saved === 'mvstart' || saved === 'ytstart') playMode = saved;
   ytKey = localStorage.getItem('quizYtKey') || '';
 } catch (e) {}
 
@@ -1149,7 +1168,8 @@ async function doSearch() {
       status.textContent = '카드를 눌러 가수를 선택하세요. 여러 명 선택할 수 있어요.';
     }
   } catch (e) {
-    status.textContent = '검색에 실패했어요. 잠시 후 다시 시도해 주세요.';
+    const detail = e && e.message && e.message.includes(':') ? ` (${e.message})` : '';
+    status.textContent = `검색에 실패했어요${detail}. 잠시 후 다시 시도해 주세요.`;
     status.className = 'status error';
   } finally {
     $('searchBtn').disabled = false;
