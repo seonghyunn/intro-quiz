@@ -646,7 +646,7 @@
     </div>
 
     <footer>
-      v18
+      v19
     </footer>
   </div>
 </div>
@@ -779,23 +779,48 @@ function firstOk(promises) {
   });
 }
 
+// 성공한 경로를 화면 하단에 표시 (문제 발생 시 어떤 경로가 통했는지 확인용)
+function setVia(tag) {
+  const f = document.querySelector('footer');
+  if (f) f.textContent = 'v19 · ' + tag;
+}
+function tagVia(promise, tag) {
+  return Promise.resolve(promise).then(d => ({ d, tag }));
+}
+
 async function itunesSearch(params) {
-  const url = 'https://itunes.apple.com/search?' + params;
-  const smallUrl = 'https://itunes.apple.com/search?' + params.replace(/limit=\d+/, 'limit=60');
-  // 1) 애플 직통 JSONP + Deno 중계(전체 곡) 동시 경쟁 — 먼저 성공하는 것 사용
-  //    정상망은 직통이 즉시, 애플이 IP를 막은 폰은 Deno가 20초 안에 전체 곡을 받아옴
+  const full = 'https://itunes.apple.com/search?' + params;
+  const small = full.replace(/limit=\d+/, 'limit=60');   // 약 75KB
+  const tiny = full.replace(/limit=\d+/, 'limit=25');    // 약 30KB
+  const AO = 'https://api.allorigins.win/raw?url=';
+
+  // 전체곡 경로와 축소 경로를 "전부 동시에" 출발시킨다.
+  // 전체곡이 시간 안에 오면 그걸 쓰고, 안 오면 이미 도착해 있는 축소 결과를 쓴다.
+  const fullRace = firstOk([
+    tagVia(jsonp(full), '직통 · 전체'),
+    tagVia(relayFetch(DENO + encodeURIComponent(full), 20000), '중계 · 전체')
+  ]);
+  const smallRace = firstOk([
+    tagVia(relayFetch(DENO + encodeURIComponent(small), 14000), '중계 · 60곡'),
+    tagVia(relayFetch(AO + encodeURIComponent(small), 16000), '중계B · 60곡')
+  ]).catch(() => null);
+
   try {
-    return await firstOk([
-      jsonp(url),
-      relayFetch(DENO + encodeURIComponent(url), 20000)
-    ]);
+    const r = await fullRace;
+    setVia(r.tag);
+    return r.d;
   } catch (e) {}
-  // 2) Deno 축소(60곡, 75KB — 큰 응답만 느린 네트워크에서 빠르게 성공)
-  try {
-    return await relayFetch(DENO + encodeURIComponent(smallUrl), 12000);
-  } catch (e) {}
-  // 3) allorigins 60곡 (최후의 보루)
-  return await relayFetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(smallUrl), 15000);
+
+  const s = await smallRace;
+  if (s) { setVia(s.tag); return s.d; }
+
+  // 초소형(25곡) 최후 시도 — 아주 느린 네트워크도 30KB는 받을 수 있다
+  const t = await firstOk([
+    tagVia(relayFetch(DENO + encodeURIComponent(tiny), 10000), '중계 · 25곡'),
+    tagVia(relayFetch(AO + encodeURIComponent(tiny), 12000), '중계B · 25곡')
+  ]);
+  setVia(t.tag);
+  return t.d;
 }
 
 function normalize(s) {
@@ -924,7 +949,7 @@ try {
 } catch (e) {}
 
 const MODE_DESC = {
-  preview: 'iTunes 노래 미리듣기 — 곡의 하이라이트 부근 · 준비 없이 바로 시작',
+  preview: 'iTunes 노래 미리듣기 — 곡의 하이라이트 부근',
   mvstart: '뮤직비디오 미리듣기 — 곡의 첫 부분부터 · 광고 없음 · MV 있는 곡만 출제',
   ytstart: '유튜브 공식 음원으로 진짜 곡 처음부터 들려줘요 · 무료 API 키 필요 · 유튜브 프리미엄으로 로그인된 브라우저는 광고가 없고, 아니면 광고가 나올 수 있어요'
 };
@@ -1174,8 +1199,8 @@ async function doSearch() {
       status.textContent = '카드를 눌러 가수를 선택하세요. 여러 명 선택할 수 있어요.';
     }
   } catch (e) {
-    const detail = e && e.message && e.message.includes(':') ? ` (${e.message})` : '';
-    status.textContent = `검색에 실패했어요${detail}. 잠시 후 다시 시도해 주세요.`;
+    // 6개 경로가 전부 실패한 경우 — 사실상 오프라인. 실패 문구 대신 안내만.
+    status.textContent = '네트워크 연결을 확인하고 잠시 후 다시 검색해 주세요.';
     status.className = 'status error';
   } finally {
     $('searchBtn').disabled = false;
