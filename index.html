@@ -646,7 +646,7 @@
     </div>
 
     <footer>
-      v17
+      v18
     </footer>
   </div>
 </div>
@@ -754,10 +754,11 @@ function jsonp(url) {
   });
 }
 
-// iTunes 검색: 3단 폴백
-// 1) 애플 직통 (PC 등 막히지 않은 네트워크 — 가장 빠름)
-// 2) Deno 중계 — 전체 200곡 그대로 통과 (모바일 통신망처럼 애플이 IP를 막은 경우)
-// 3) allorigins 중계 — 60곡 축소 (최후의 보루)
+// iTunes 검색 (200곡 응답은 약 300KB — 폰 셀룰러에서 느릴 수 있어 타임아웃 여유를 크게)
+// 1) 애플 직통 JSONP + Deno 중계를 "동시에" 쏴서 먼저 성공하는 것 사용 (전체 곡, 최대 속도)
+// 2) 둘 다 실패하면 Deno 한 번 더
+// 3) 그래도 안 되면 allorigins 60곡 축소 (최후의 보루)
+const DENO = 'https://corsproxy.deno.dev/?url=';
 function relayFetch(url, timeoutMs) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -766,30 +767,35 @@ function relayFetch(url, timeoutMs) {
     .finally(() => clearTimeout(t));
 }
 
-function shortErr(e) {
-  const s = String((e && e.message) || e);
-  if (/abort/i.test(s)) return '시간초과';
-  if (/^s\d+/.test(s)) return '거부(' + s.slice(1) + ')';
-  if (/timeout/.test(s)) return '시간초과';
-  return '연결실패';
+// 여러 Promise 중 "먼저 성공하는 것"을 반환 (모두 실패해야 reject) — Promise.any 대체(구형 브라우저 호환)
+function firstOk(promises) {
+  return new Promise((resolve, reject) => {
+    let remaining = promises.length;
+    let settled = false;
+    promises.forEach(p => Promise.resolve(p).then(
+      v => { if (!settled) { settled = true; resolve(v); } },
+      () => { if (--remaining === 0 && !settled) reject(new Error('all-failed')); }
+    ));
+  });
 }
 
 async function itunesSearch(params) {
   const url = 'https://itunes.apple.com/search?' + params;
-  const steps = [];
+  const smallUrl = 'https://itunes.apple.com/search?' + params.replace(/limit=\d+/, 'limit=60');
+  // 1) 애플 직통 JSONP + Deno 중계(전체 곡) 동시 경쟁 — 먼저 성공하는 것 사용
+  //    정상망은 직통이 즉시, 애플이 IP를 막은 폰은 Deno가 20초 안에 전체 곡을 받아옴
   try {
-    return await jsonp(url);
-  } catch (e) { steps.push('직통:' + shortErr(e)); }
-  for (let i = 1; i <= 2; i++) {
-    try {
-      return await relayFetch('https://corsproxy.deno.dev/?url=' + encodeURIComponent(url), 15000);
-    } catch (e) { steps.push('중계1-' + i + ':' + shortErr(e)); }
-  }
+    return await firstOk([
+      jsonp(url),
+      relayFetch(DENO + encodeURIComponent(url), 20000)
+    ]);
+  } catch (e) {}
+  // 2) Deno 축소(60곡, 75KB — 큰 응답만 느린 네트워크에서 빠르게 성공)
   try {
-    const smaller = 'https://itunes.apple.com/search?' + params.replace(/limit=\d+/, 'limit=60');
-    return await relayFetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(smaller), 15000);
-  } catch (e) { steps.push('중계2:' + shortErr(e)); }
-  throw new Error(steps.join(' · '));
+    return await relayFetch(DENO + encodeURIComponent(smallUrl), 12000);
+  } catch (e) {}
+  // 3) allorigins 60곡 (최후의 보루)
+  return await relayFetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(smallUrl), 15000);
 }
 
 function normalize(s) {
