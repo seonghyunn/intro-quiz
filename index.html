@@ -646,7 +646,7 @@
     </div>
 
     <footer>
-      v20
+      v21
     </footer>
   </div>
 </div>
@@ -786,28 +786,35 @@ function noteResult(d, limitUsed) {
   const f = document.querySelector('footer');
   if (!f) return;
   if (!limitUsed || n < limitUsed) {
-    f.textContent = 'v20 · 아티스트의 전체 곡이 조회되었습니다.';
+    f.textContent = 'v21 · 아티스트의 전체 곡이 조회되었습니다.';
   } else {
-    f.textContent = 'v20 · 서버 용량으로 인해 일부 곡만 조회되었습니다.';
+    f.textContent = 'v21 · 서버 용량으로 인해 일부 곡만 조회되었습니다.';
   }
 }
 function withLimit(promise, limitUsed) {
   return Promise.resolve(promise).then(d => ({ d, limitUsed }));
 }
 
+// 전용 슬림 서버 — 애플 응답에서 필요한 필드만 남겨 1/3 크기로 전달 (느린 모바일에서도 전체 곡 수신)
+const SLIM = 'https://intro-quiz.seonghyunn.deno.net/search?';
+
 async function itunesSearch(params) {
   const full = 'https://itunes.apple.com/search?' + params;
-  const small = full.replace(/limit=\d+/, 'limit=60');   // 약 75KB
-  const tiny = full.replace(/limit=\d+/, 'limit=25');    // 약 30KB
+  const small = full.replace(/limit=\d+/, 'limit=60');
+  const tiny = full.replace(/limit=\d+/, 'limit=25');
+  const pSmall = params.replace(/limit=\d+/, 'limit=60');
+  const pTiny = params.replace(/limit=\d+/, 'limit=25');
   const AO = 'https://api.allorigins.win/raw?url=';
 
   // 전체곡 경로와 축소 경로를 "전부 동시에" 출발시킨다.
   // 전체곡이 시간 안에 오면 그걸 쓰고, 안 오면 이미 도착해 있는 축소 결과를 쓴다.
   const fullRace = firstOk([
-    withLimit(jsonp(full), null),
-    withLimit(relayFetch(DENO + encodeURIComponent(full), 20000), null)
+    withLimit(relayFetch(SLIM + params, 18000), null),               // 전용 슬림 서버 (1순위)
+    withLimit(jsonp(full), null),                                    // 애플 직통
+    withLimit(relayFetch(DENO + encodeURIComponent(full), 20000), null) // 공용 중계
   ]);
   const smallRace = firstOk([
+    withLimit(relayFetch(SLIM + pSmall, 12000), 60),
     withLimit(relayFetch(DENO + encodeURIComponent(small), 14000), 60),
     withLimit(relayFetch(AO + encodeURIComponent(small), 16000), 60)
   ]).catch(() => null);
@@ -821,8 +828,9 @@ async function itunesSearch(params) {
   const s = await smallRace;
   if (s) { noteResult(s.d, s.limitUsed); return s.d; }
 
-  // 초소형(25곡) 최후 시도 — 아주 느린 네트워크도 30KB는 받을 수 있다
+  // 초소형(25곡) 최후 시도 — 아주 느린 네트워크도 받을 수 있는 크기
   const t = await firstOk([
+    withLimit(relayFetch(SLIM + pTiny, 10000), 25),
     withLimit(relayFetch(DENO + encodeURIComponent(tiny), 10000), 25),
     withLimit(relayFetch(AO + encodeURIComponent(tiny), 12000), 25)
   ]);
