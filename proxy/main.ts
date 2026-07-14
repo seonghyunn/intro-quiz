@@ -25,6 +25,7 @@ Deno.serve(async (req: Request) => {
       releaseDate: t.releaseDate,
       primaryGenreName: t.primaryGenreName,
       collectionId: t.collectionId,
+      collectionName: t.collectionName,
     }));
     return json({ resultCount: results.length, results }, 200);
   } catch (_e) {
