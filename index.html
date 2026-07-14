@@ -193,8 +193,8 @@
   }
   .field { margin-top: 14px; }
   .year-sep { align-self: center; color: var(--sub); font-size: 14px; }
-  .mt18 { margin-top: 18px; }
-  #countryWrap > label { margin-bottom: 10px; }
+  #countryFilter { margin-top: 18px; }
+  #countryFilter > label { margin-bottom: 10px; }
   .country-row { display: flex; gap: 8px; flex-wrap: wrap; }
   .ctry {
     display: flex; align-items: center; gap: 6px;
@@ -578,21 +578,17 @@
         <div class="status" id="ytKeyState"></div>
       </div>
 
-      <div id="countryWrap">
-        <label>발매 국가 · 한국 가수의 해외 발매곡도 포함하려면 함께 선택하세요</label>
-        <div class="country-row">
-          <label class="ctry"><input type="checkbox" id="ctryKR" checked><span>🇰🇷 한국</span></label>
-          <label class="ctry"><input type="checkbox" id="ctryJP"><span>🇯🇵 일본</span></label>
-          <label class="ctry"><input type="checkbox" id="ctryUS"><span>🇺🇸 미국</span></label>
-        </div>
-      </div>
-      <label for="artistInput" class="mt18">가수명 · 여러 명을 검색해서 함께 선택할 수 있어요</label>
+      <label for="artistInput">가수명 · 여러 명을 검색해서 함께 선택할 수 있어요</label>
       <div class="row">
         <input type="text" id="artistInput" placeholder="예: 데이식스, 엑스디너리히어로즈, 드래곤포니" autocomplete="off">
         <button id="searchBtn">검색</button>
       </div>
       <div class="artist-grid" id="artistGrid" style="display:none"></div>
       <div class="chips" id="selectedRow"></div>
+      <div id="countryFilter" style="display:none">
+        <label>발매 국가 · 선택한 가수가 여러 나라에서 곡을 발매했어요</label>
+        <div class="country-row" id="countryRow"></div>
+      </div>
       <div id="yearWrap">
         <label class="chk-row">
           <input type="checkbox" id="yearFilterChk">
@@ -622,10 +618,9 @@
       </div>
 
       <div class="game-opts">
-        <div class="mode-seg" id="segGame">
-          <button type="button" data-mode="preview">하이라이트</button>
-          <button type="button" data-mode="mvstart" disabled title="준비 중">MV 처음부터</button>
-          <button type="button" data-mode="ytstart" disabled title="준비 중">처음부터</button>
+        <div class="mode-seg" id="segPos">
+          <button type="button" data-pos="start" class="active">도입부부터</button>
+          <button type="button" data-pos="random">랜덤 구간</button>
         </div>
         <div class="dur-row">
           재생 <input type="number" id="durInput" value="1" min="0.5" max="5" step="0.5">초
@@ -667,7 +662,7 @@
     </div>
 
     <footer>
-      v22
+      v23
     </footer>
   </div>
 </div>
@@ -807,9 +802,9 @@ function noteResult(d, limitUsed) {
   const f = document.querySelector('footer');
   if (!f) return;
   if (!limitUsed || n < limitUsed) {
-    f.textContent = 'v22 · 아티스트의 전체 곡이 조회되었습니다.';
+    f.textContent = 'v23 · 아티스트의 전체 곡이 조회되었습니다.';
   } else {
-    f.textContent = 'v22 · 서버 용량으로 인해 일부 곡만 조회되었습니다.';
+    f.textContent = 'v23 · 서버 용량으로 인해 일부 곡만 조회되었습니다.';
   }
 }
 function withLimit(promise, limitUsed) {
@@ -817,7 +812,8 @@ function withLimit(promise, limitUsed) {
 }
 
 // 전용 슬림 서버 — 애플 응답에서 필요한 필드만 남겨 1/3 크기로 전달 (느린 모바일에서도 전체 곡 수신)
-const SLIM = 'https://intro-quiz.seonghyunn.deno.net/search?';
+// sv=슬림 응답 스키마 버전. 서버 필드가 바뀌면 올려서 브라우저 캐시를 무효화한다.
+const SLIM = 'https://intro-quiz.seonghyunn.deno.net/search?sv=2&';
 
 async function itunesSearch(params) {
   const full = 'https://itunes.apple.com/search?' + params;
@@ -905,24 +901,10 @@ function chosungHint(title) {
 const itunes = {
   _cache: { term: null, raw: null },
   _mvCache: new Map(), // 가수명 -> MV 제목별 미리듣기 URL 맵
-  async searchArtists(term, countries) {
-    const key = term + '|' + countries.join(',');
-    if (this._cache.term !== key) {
-      // 선택한 국가 스토어들을 병렬 검색해 합친다 (한국 가수의 일본/미국 발매곡 포함용)
-      const datas = await Promise.all(countries.map(c =>
-        itunesSearch('media=music&entity=song&country=' + c + '&limit=200&term=' + encodeURIComponent(term))
-          .catch(() => ({ results: [] }))));
-      const seen = new Set();
-      const raw = [];
-      for (const data of datas) {
-        for (const r of (data.results || [])) {
-          if (!r.trackName || !r.artistName) continue;
-          if (r.trackId != null && seen.has(r.trackId)) continue;
-          if (r.trackId != null) seen.add(r.trackId);
-          raw.push(r);
-        }
-      }
-      this._cache = { term: key, raw };
+  async searchArtists(term) {
+    if (this._cache.term !== term) {
+      const data = await itunesSearch('media=music&entity=song&country=KR&limit=200&term=' + encodeURIComponent(term));
+      this._cache = { term, raw: (data.results || []).filter(r => r.trackName && r.artistName) };
     }
     const nTerm = normalize(term);
     const groups = new Map();
@@ -937,7 +919,7 @@ const itunes = {
       }
     }
     const all = [...groups.values()];
-    // 카드 곡수를 "실제 플레이 가능한 곡수"(미리듣기 있고 제목 중복 제거)로 계산
+    // 카드 곡수를 "실제 플레이 가능한 곡수"(미리듣기 있고 제목 중복 제거)로 계산 (한국 스토어 기준)
     await Promise.all(all.map(async c => {
       const tracks = await this.tracksFor(c);
       c.count = tracks.length;
@@ -948,6 +930,50 @@ const itunes = {
     // 한글 검색어 ↔ 영문 가수명(빅뱅→BIGBANG)처럼 표기가 다르면 검색 결과의 가수를 그대로 후보로
     const list = exact.length ? exact : (partial.length ? partial : all);
     return list.sort((a, b) => b.count - a.count).slice(0, 6);
+  },
+  // 국가별 원본 조회 (미리듣기 있는 곡만) — 캐시
+  _ctryCache: new Map(),
+  async rawByCountry(name, country) {
+    const k = name + '|' + country;
+    if (this._ctryCache.has(k)) return this._ctryCache.get(k);
+    let raw = [];
+    try {
+      const d = await itunesSearch('media=music&entity=song&country=' + country + '&limit=200&term=' + encodeURIComponent(name));
+      raw = (d.results || []).filter(r => r.trackName && r.artistName && r.previewUrl);
+    } catch (e) {}
+    this._ctryCache.set(k, raw);
+    return raw;
+  },
+  // 가수의 "발매 국가별" 곡 목록. 앨범명 차집합으로 진짜 그 나라 발매곡만 추린다.
+  // 한국 = KR 스토어 전체 / 일본 = JP 중 앨범이 한국에 없는 것 / 미국 = US 중 앨범이 한/일에 없는 것
+  async tracksByCountry(cand) {
+    const [kr, jp, us] = await Promise.all(['KR', 'JP', 'US'].map(c => this.rawByCountry(cand.name, c)));
+    const nName = normalize(cand.name);
+    const belongs = r => r.artistId === cand.id
+      || normalize(r.artistName).includes(nName) || nName.includes(normalize(r.artistName));
+    const fKr = kr.filter(belongs), fJp = jp.filter(belongs), fUs = us.filter(belongs);
+    const na = s => (s || '').toLowerCase().replace(/[^a-z0-9가-힣]/g, '');
+    const krAlbums = new Set(fKr.map(x => na(x.collectionName)));
+    const jpAlbums = new Set(fJp.map(x => na(x.collectionName)));
+    const mk = r => ({
+      title: r.trackName, artist: cand.name, previewUrl: r.previewUrl,
+      year: r.releaseDate ? new Date(r.releaseDate).getFullYear() : null,
+      art: r.artworkUrl100 ? r.artworkUrl100.replace('100x100', '300x300') : null
+    });
+    const dedupe = rows => {
+      const seen = new Set(); const out = [];
+      for (const r of rows) {
+        const key = normalize(stripParen(r.trackName));
+        if (!key || seen.has(key)) continue;
+        seen.add(key); out.push(r);
+      }
+      return out;
+    };
+    return {
+      KR: dedupe(fKr).map(mk),
+      JP: dedupe(fJp.filter(x => !krAlbums.has(na(x.collectionName)))).map(mk),
+      US: dedupe(fUs.filter(x => !krAlbums.has(na(x.collectionName)) && !jpAlbums.has(na(x.collectionName)))).map(mk)
+    };
   },
   // 가수의 뮤직비디오 미리듣기 목록 (제목 키 -> URL). MV는 US 스토어에만 있음
   async mvMapFor(name) {
@@ -1010,26 +1036,37 @@ const MODE_DESC = {
 function setPlayMode(m, save = true) {
   playMode = m;
   if (save) try { localStorage.setItem('quizPlayMode', m); } catch (e) {}
-  document.querySelectorAll('#segSearch button, #segGame button').forEach(b => {
+  document.querySelectorAll('#segSearch button').forEach(b => {
     b.classList.toggle('active', b.dataset.mode === m);
   });
   $('modeDesc').textContent = MODE_DESC[m];
   $('ytKeyBlock').style.display = m === 'ytstart' ? 'block' : 'none';
   if (m === 'ytstart') refreshYtKeyState();
   stopAllSound();
-  // 현재 문제의 영상 미리 찾아두기 (재생 지연 최소화)
   if (m === 'ytstart' && ytKey && state.current) ytFind(state.current).catch(() => {});
 }
 
-document.querySelectorAll('#segSearch button, #segGame button').forEach(b => {
+document.querySelectorAll('#segSearch button').forEach(b => {
   b.addEventListener('click', () => {
     if (b.dataset.mode === playMode) return;
-    if (b.dataset.mode === 'ytstart' && !ytKey && b.closest('#segGame')) {
-      $('playHint').textContent = 'YouTube API 키가 필요해요. "가수 다시 고르기" 화면에서 등록해 주세요.';
-    }
     setPlayMode(b.dataset.mode);
   });
 });
+
+// ---------- 재생 위치: 도입부부터 / 랜덤 구간 ----------
+let playPos = 'start';
+try { const p = localStorage.getItem('quizPlayPos'); if (p === 'random') playPos = 'random'; } catch (e) {}
+function applyPosButtons() {
+  document.querySelectorAll('#segPos button').forEach(b => b.classList.toggle('active', b.dataset.pos === playPos));
+}
+document.querySelectorAll('#segPos button').forEach(b => {
+  b.addEventListener('click', () => {
+    playPos = b.dataset.pos;
+    try { localStorage.setItem('quizPlayPos', playPos); } catch (e) {}
+    applyPosButtons();
+  });
+});
+applyPosButtons();
 
 // ---------- YouTube 키 등록 ----------
 function refreshYtKeyState() {
@@ -1227,27 +1264,69 @@ $('yearFilterChk').addEventListener('change', () => {
   $('yearField').style.display = $('yearFilterChk').checked ? 'block' : 'none';
 });
 
-// 발매 국가 선택 — 최소 1개 보장(전부 해제하면 한국 자동 체크). 변경 시 검색·선택 초기화
-function selectedCountries() {
-  const c = [];
-  if ($('ctryKR').checked) c.push('KR');
-  if ($('ctryJP').checked) c.push('JP');
-  if ($('ctryUS').checked) c.push('US');
-  if (!c.length) { $('ctryKR').checked = true; c.push('KR'); }
+// 발매 국가 필터 — 가수 선택 후, 곡이 여러 나라에 나뉠 때만 노출
+const CTRY_LABEL = { KR: '🇰🇷 한국', JP: '🇯🇵 일본', US: '🇺🇸 미국' };
+let activeCountries = new Set(['KR']);
+
+function countrySongCounts() {
+  const c = { KR: 0, JP: 0, US: 0 };
+  for (const { byCountry } of selected.values()) {
+    for (const k of ['KR', 'JP', 'US']) c[k] += (byCountry[k] || []).length;
+  }
   return c;
 }
-['ctryKR', 'ctryJP', 'ctryUS'].forEach(id => {
-  $(id).addEventListener('change', () => {
-    selected.clear();
-    lastCandidates = [];
-    itunes._cache = { term: null, raw: null };
-    rangeShownFor = null;
-    renderChips();
+
+function renderCountryFilter() {
+  const counts = countrySongCounts();
+  const withSongs = ['KR', 'JP', 'US'].filter(k => counts[k] > 0);
+  const wrap = $('countryFilter');
+  if (selected.size === 0 || withSongs.length < 2) {
+    // 나뉘지 않으면 필터 숨기고, 곡 있는 국가를 모두 활성화
+    wrap.style.display = 'none';
+    activeCountries = new Set(withSongs.length ? withSongs : ['KR']);
     updateStartBtn();
-    $('artistGrid').style.display = 'none';
-    $('searchStatus').textContent = '';
-  });
-});
+    return;
+  }
+  // 활성 국가 중 곡 있는 것만 유지, 하나도 없으면 첫 국가 활성
+  activeCountries = new Set([...activeCountries].filter(k => withSongs.includes(k)));
+  if (!activeCountries.size) activeCountries.add(withSongs[0]);
+
+  const row = $('countryRow');
+  row.innerHTML = '';
+  for (const k of withSongs) {
+    const label = document.createElement('label');
+    label.className = 'ctry';
+    label.innerHTML = `<input type="checkbox"><span>${CTRY_LABEL[k]} (${counts[k]}곡)</span>`;
+    const cb = label.querySelector('input');
+    cb.checked = activeCountries.has(k);
+    cb.addEventListener('change', () => {
+      if (cb.checked) activeCountries.add(k);
+      else activeCountries.delete(k);
+      if (!activeCountries.size) { activeCountries.add(k); cb.checked = true; } // 최소 1개
+      updateStartBtn();
+    });
+    row.appendChild(label);
+  }
+  wrap.style.display = 'block';
+  updateStartBtn();
+}
+
+// 선택된 가수들의 활성 국가 곡을 합친다 (가수별 동일 제목만 제거)
+function collectTracks() {
+  const tracks = [];
+  const seen = new Set();
+  for (const { cand, byCountry } of selected.values()) {
+    for (const k of activeCountries) {
+      for (const t of (byCountry[k] || [])) {
+        const key = cand.id + '|' + normalize(stripParen(t.title));
+        if (seen.has(key)) continue;
+        seen.add(key);
+        tracks.push(t);
+      }
+    }
+  }
+  return tracks;
+}
 
 async function doSearch() {
   const term = $('artistInput').value.trim();
@@ -1258,7 +1337,7 @@ async function doSearch() {
   status.className = 'status';
   status.textContent = '검색하는 중...';
   try {
-    lastCandidates = await itunes.searchArtists(term, selectedCountries());
+    lastCandidates = await itunes.searchArtists(term);
     if (!lastCandidates.length) {
       $('artistGrid').style.display = 'none';
       status.textContent = '가수를 찾지 못했어요. 표기(한글/영문)를 바꿔서 다시 검색해 보세요.';
@@ -1287,19 +1366,21 @@ async function toggleSelect(cand) {
   if (selected.has(cand.id)) {
     selected.delete(cand.id);
     renderChips();
-    updateStartBtn();
+    renderCountryFilter();
     return;
   }
-  const tracks = await itunes.tracksFor(cand);
-  if (tracks.length < 2) {
+  // 발매 국가별 곡 목록 조회 (한국/일본/미국)
+  const byCountry = await itunes.tracksByCountry(cand);
+  const total = byCountry.KR.length + byCountry.JP.length + byCountry.US.length;
+  if (total < 2) {
     status.textContent = `${cand.name}의 미리듣기 곡이 부족해서 선택할 수 없어요.`;
     status.className = 'status error';
     return;
   }
-  selected.set(cand.id, { cand, tracks });
+  selected.set(cand.id, { cand, byCountry });
   status.className = 'status';
   renderChips();
-  updateStartBtn();
+  renderCountryFilter();
 }
 
 function renderArtistGrid() {
@@ -1338,7 +1419,7 @@ function renderChips() {
       selected.delete(cand.id);
       renderChips();
       renderArtistGrid();
-      updateStartBtn();
+      renderCountryFilter();
     });
     row.appendChild(chip);
   }
@@ -1349,7 +1430,7 @@ function updateStartBtn() {
   $('startBtn').disabled = n === 0;
   $('startBtn').textContent = n === 0
     ? '가수를 선택하면 시작할 수 있어요'
-    : `${n}명의 가수로 시작 (${[...selected.values()].reduce((s, v) => s + v.tracks.length, 0)}곡)`;
+    : `${n}명의 가수로 시작 (${collectTracks().length}곡)`;
 }
 
 // ---------- 시작 (연도 필터 2단계 포함) ----------
@@ -1367,17 +1448,8 @@ function startPlay() {
   }
   status.className = 'status';
 
-  // 선택된 모든 가수의 곡 합치기 (가수 간 같은 제목은 각각 유지, 동일 곡만 제거)
-  let tracks = [];
-  const seen = new Set();
-  for (const { cand, tracks: ts } of selected.values()) {
-    for (const t of ts) {
-      const key = cand.id + '|' + normalize(stripParen(t.title));
-      if (seen.has(key)) continue;
-      seen.add(key);
-      tracks.push(t);
-    }
-  }
+  // 선택된 가수들의 활성 국가 곡 합치기
+  let tracks = collectTracks();
 
   // MV 모드로 시작하면 MV가 있는 곡만 출제
   if (playMode === 'mvstart') {
@@ -1537,7 +1609,12 @@ async function playSnippet() {
 
   const { url, fallback } = currentSrc();
   if (audio.src !== url) audio.src = url;
-  audio.currentTime = 0;
+  // 재생 위치: 도입부부터(0초) 또는 랜덤 구간(미리듣기 끝 5초 전까지에서 시작)
+  let startAt = 0;
+  if (playPos === 'random' && isFinite(audio.duration) && audio.duration > 5) {
+    startAt = Math.random() * (audio.duration - 5);
+  }
+  try { audio.currentTime = startAt; } catch (e) { audio.currentTime = 0; }
   const btn = $('playBtn');
   audio.play().then(() => {
     btn.classList.add('playing');
@@ -1548,9 +1625,10 @@ async function playSnippet() {
   }).catch(() => {
     $('playHint').textContent = '재생에 실패했어요. 다시 눌러보세요.';
   });
+  const posLabel = playPos === 'random' ? '랜덤 구간' : '도입부';
   $('playHint').textContent = fallback
     ? `이 곡은 MV가 없어 하이라이트 구간으로 ${dur}초 재생 중...`
-    : (playMode === 'mvstart' ? `곡 처음부터 ${dur}초 재생 중...` : `${dur}초 재생 중...`);
+    : `${posLabel} ${dur}초 재생 중...`;
 }
 
 $('playBtn').addEventListener('click', playSnippet);
