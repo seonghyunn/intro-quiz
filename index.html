@@ -646,7 +646,7 @@
     </div>
 
     <footer>
-      v19
+      v20
     </footer>
   </div>
 </div>
@@ -779,13 +779,20 @@ function firstOk(promises) {
   });
 }
 
-// 성공한 경로를 화면 하단에 표시 (문제 발생 시 어떤 경로가 통했는지 확인용)
-function setVia(tag) {
+// 조회 결과 안내를 화면 하단에 표시
+// limitUsed가 없거나(전체 요청) 받은 곡 수가 요청 한도보다 적으면 = 카탈로그 전체를 받은 것
+function noteResult(d, limitUsed) {
+  const n = (d && d.results ? d.results.length : 0);
   const f = document.querySelector('footer');
-  if (f) f.textContent = 'v19 · ' + tag;
+  if (!f) return;
+  if (!limitUsed || n < limitUsed) {
+    f.textContent = 'v20 · 아티스트의 전체 곡이 조회되었습니다.';
+  } else {
+    f.textContent = 'v20 · 서버 용량으로 인해 일부 곡만 조회되었습니다.';
+  }
 }
-function tagVia(promise, tag) {
-  return Promise.resolve(promise).then(d => ({ d, tag }));
+function withLimit(promise, limitUsed) {
+  return Promise.resolve(promise).then(d => ({ d, limitUsed }));
 }
 
 async function itunesSearch(params) {
@@ -797,29 +804,29 @@ async function itunesSearch(params) {
   // 전체곡 경로와 축소 경로를 "전부 동시에" 출발시킨다.
   // 전체곡이 시간 안에 오면 그걸 쓰고, 안 오면 이미 도착해 있는 축소 결과를 쓴다.
   const fullRace = firstOk([
-    tagVia(jsonp(full), '직통 · 전체'),
-    tagVia(relayFetch(DENO + encodeURIComponent(full), 20000), '중계 · 전체')
+    withLimit(jsonp(full), null),
+    withLimit(relayFetch(DENO + encodeURIComponent(full), 20000), null)
   ]);
   const smallRace = firstOk([
-    tagVia(relayFetch(DENO + encodeURIComponent(small), 14000), '중계 · 60곡'),
-    tagVia(relayFetch(AO + encodeURIComponent(small), 16000), '중계B · 60곡')
+    withLimit(relayFetch(DENO + encodeURIComponent(small), 14000), 60),
+    withLimit(relayFetch(AO + encodeURIComponent(small), 16000), 60)
   ]).catch(() => null);
 
   try {
     const r = await fullRace;
-    setVia(r.tag);
+    noteResult(r.d, r.limitUsed);
     return r.d;
   } catch (e) {}
 
   const s = await smallRace;
-  if (s) { setVia(s.tag); return s.d; }
+  if (s) { noteResult(s.d, s.limitUsed); return s.d; }
 
   // 초소형(25곡) 최후 시도 — 아주 느린 네트워크도 30KB는 받을 수 있다
   const t = await firstOk([
-    tagVia(relayFetch(DENO + encodeURIComponent(tiny), 10000), '중계 · 25곡'),
-    tagVia(relayFetch(AO + encodeURIComponent(tiny), 12000), '중계B · 25곡')
+    withLimit(relayFetch(DENO + encodeURIComponent(tiny), 10000), 25),
+    withLimit(relayFetch(AO + encodeURIComponent(tiny), 12000), 25)
   ]);
-  setVia(t.tag);
+  noteResult(t.d, t.limitUsed);
   return t.d;
 }
 
