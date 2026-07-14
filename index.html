@@ -193,6 +193,18 @@
   }
   .field { margin-top: 14px; }
   .year-sep { align-self: center; color: var(--sub); font-size: 14px; }
+  .mt18 { margin-top: 18px; }
+  #countryWrap > label { margin-bottom: 10px; }
+  .country-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ctry {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 14px; font-weight: 600; cursor: pointer; user-select: none;
+    padding: 9px 14px; border: 1px solid var(--line); border-radius: 999px;
+    margin: 0; color: var(--ink);
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .ctry:hover { background: var(--card2); }
+  .ctry input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
   .start-btn { width: 100%; margin-top: 20px; padding: 14px; font-size: 16px; }
 
   /* 가수 선택 그리드 — 화면 폭에 따라 유동적으로 칸 수 변경 */
@@ -566,9 +578,17 @@
         <div class="status" id="ytKeyState"></div>
       </div>
 
-      <label for="artistInput">가수명 · 여러 명을 검색해서 함께 선택할 수 있어요</label>
+      <div id="countryWrap">
+        <label>발매 국가 · 한국 가수의 해외 발매곡도 포함하려면 함께 선택하세요</label>
+        <div class="country-row">
+          <label class="ctry"><input type="checkbox" id="ctryKR" checked><span>🇰🇷 한국</span></label>
+          <label class="ctry"><input type="checkbox" id="ctryJP"><span>🇯🇵 일본</span></label>
+          <label class="ctry"><input type="checkbox" id="ctryUS"><span>🇺🇸 미국</span></label>
+        </div>
+      </div>
+      <label for="artistInput" class="mt18">가수명 · 여러 명을 검색해서 함께 선택할 수 있어요</label>
       <div class="row">
-        <input type="text" id="artistInput" placeholder="예: 아이유, BTS, 뉴진스" autocomplete="off">
+        <input type="text" id="artistInput" placeholder="예: 데이식스, 엑스디너리히어로즈, 드래곤포니" autocomplete="off">
         <button id="searchBtn">검색</button>
       </div>
       <div class="artist-grid" id="artistGrid" style="display:none"></div>
@@ -608,27 +628,28 @@
           <button type="button" data-mode="ytstart" disabled title="준비 중">처음부터</button>
         </div>
         <div class="dur-row">
-          재생 <input type="number" id="durInput" value="1" min="0.5" max="15" step="0.5">초
+          재생 <input type="number" id="durInput" value="1" min="0.5" max="5" step="0.5">초
           <label><input type="checkbox" id="durFix">고정</label>
         </div>
       </div>
 
-      <div class="play-zone">
+      <div class="play-zone" id="playZone">
         <button class="play-btn" id="playBtn" title="전주 듣기" aria-label="전주 듣기">
           <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8 5.14v13.72c0 .8.87 1.3 1.56.88l11.02-6.86a1.04 1.04 0 0 0 0-1.76L9.56 4.26A1.04 1.04 0 0 0 8 5.14z"/></svg>
         </button>
         <div class="play-hint" id="playHint">버튼을 눌러 도입부를 들어보세요</div>
       </div>
 
+      <div class="album-reveal" id="albumReveal"><img id="albumArt" alt="앨범 커버"></div>
+
       <div class="hint-chip" id="hintChip"></div>
 
-      <label for="guessInput">곡 제목 · 띄어쓰기, 대소문자 무시</label>
-      <div class="answer-row">
+      <label for="guessInput" id="guessLabel">곡 제목 · 띄어쓰기, 대소문자 무시</label>
+      <div class="answer-row" id="answerRow">
         <input type="text" id="guessInput" placeholder="제목을 입력하세요" autocomplete="off">
         <button id="guessBtn">제출</button>
       </div>
 
-      <div class="album-reveal" id="albumReveal"><img id="albumArt" alt="앨범 커버"></div>
       <div class="result" id="result"></div>
 
       <div class="actions">
@@ -646,7 +667,7 @@
     </div>
 
     <footer>
-      v21
+      v22
     </footer>
   </div>
 </div>
@@ -786,9 +807,9 @@ function noteResult(d, limitUsed) {
   const f = document.querySelector('footer');
   if (!f) return;
   if (!limitUsed || n < limitUsed) {
-    f.textContent = 'v21 · 아티스트의 전체 곡이 조회되었습니다.';
+    f.textContent = 'v22 · 아티스트의 전체 곡이 조회되었습니다.';
   } else {
-    f.textContent = 'v21 · 서버 용량으로 인해 일부 곡만 조회되었습니다.';
+    f.textContent = 'v22 · 서버 용량으로 인해 일부 곡만 조회되었습니다.';
   }
 }
 function withLimit(promise, limitUsed) {
@@ -884,10 +905,24 @@ function chosungHint(title) {
 const itunes = {
   _cache: { term: null, raw: null },
   _mvCache: new Map(), // 가수명 -> MV 제목별 미리듣기 URL 맵
-  async searchArtists(term) {
-    if (this._cache.term !== term) {
-      const data = await itunesSearch('media=music&entity=song&country=KR&limit=200&term=' + encodeURIComponent(term));
-      this._cache = { term, raw: (data.results || []).filter(r => r.trackName && r.artistName) };
+  async searchArtists(term, countries) {
+    const key = term + '|' + countries.join(',');
+    if (this._cache.term !== key) {
+      // 선택한 국가 스토어들을 병렬 검색해 합친다 (한국 가수의 일본/미국 발매곡 포함용)
+      const datas = await Promise.all(countries.map(c =>
+        itunesSearch('media=music&entity=song&country=' + c + '&limit=200&term=' + encodeURIComponent(term))
+          .catch(() => ({ results: [] }))));
+      const seen = new Set();
+      const raw = [];
+      for (const data of datas) {
+        for (const r of (data.results || [])) {
+          if (!r.trackName || !r.artistName) continue;
+          if (r.trackId != null && seen.has(r.trackId)) continue;
+          if (r.trackId != null) seen.add(r.trackId);
+          raw.push(r);
+        }
+      }
+      this._cache = { term: key, raw };
     }
     const nTerm = normalize(term);
     const groups = new Map();
@@ -896,15 +931,18 @@ const itunes = {
         groups.set(r.artistId, {
           id: r.artistId,
           name: r.artistName,
-          meta: r.primaryGenreName || '',
-          art: r.artworkUrl100 ? r.artworkUrl100.replace('100x100', '200x200') : null,
-          count: 0
+          genre: r.primaryGenreName || '',
+          art: r.artworkUrl100 ? r.artworkUrl100.replace('100x100', '200x200') : null
         });
       }
-      groups.get(r.artistId).count++;
     }
     const all = [...groups.values()];
-    all.forEach(c => { c.meta = `${c.meta} · ${c.count}곡`; });
+    // 카드 곡수를 "실제 플레이 가능한 곡수"(미리듣기 있고 제목 중복 제거)로 계산
+    await Promise.all(all.map(async c => {
+      const tracks = await this.tracksFor(c);
+      c.count = tracks.length;
+      c.meta = `${c.genre} · ${tracks.length}곡`;
+    }));
     const exact = all.filter(c => normalize(c.name) === nTerm);
     const partial = all.filter(c => normalize(c.name).includes(nTerm));
     // 한글 검색어 ↔ 영문 가수명(빅뱅→BIGBANG)처럼 표기가 다르면 검색 결과의 가수를 그대로 후보로
@@ -1157,7 +1195,7 @@ function stopAllSound() {
 function getDur() {
   let v = parseFloat($('durInput').value);
   if (!isFinite(v)) v = 1;
-  v = Math.min(15, Math.max(0.5, v));
+  v = Math.min(5, Math.max(0.5, v)); // 최대 5초
   $('durInput').value = v;
   return v;
 }
@@ -1173,7 +1211,7 @@ try {
   if (localStorage.getItem('quizDurFix')) {
     $('durFix').checked = true;
     const d = parseFloat(localStorage.getItem('quizDur'));
-    if (isFinite(d)) $('durInput').value = d;
+    if (isFinite(d)) $('durInput').value = Math.min(5, Math.max(0.5, d));
   }
 } catch (e) {}
 
@@ -1189,6 +1227,28 @@ $('yearFilterChk').addEventListener('change', () => {
   $('yearField').style.display = $('yearFilterChk').checked ? 'block' : 'none';
 });
 
+// 발매 국가 선택 — 최소 1개 보장(전부 해제하면 한국 자동 체크). 변경 시 검색·선택 초기화
+function selectedCountries() {
+  const c = [];
+  if ($('ctryKR').checked) c.push('KR');
+  if ($('ctryJP').checked) c.push('JP');
+  if ($('ctryUS').checked) c.push('US');
+  if (!c.length) { $('ctryKR').checked = true; c.push('KR'); }
+  return c;
+}
+['ctryKR', 'ctryJP', 'ctryUS'].forEach(id => {
+  $(id).addEventListener('change', () => {
+    selected.clear();
+    lastCandidates = [];
+    itunes._cache = { term: null, raw: null };
+    rangeShownFor = null;
+    renderChips();
+    updateStartBtn();
+    $('artistGrid').style.display = 'none';
+    $('searchStatus').textContent = '';
+  });
+});
+
 async function doSearch() {
   const term = $('artistInput').value.trim();
   const status = $('searchStatus');
@@ -1198,7 +1258,7 @@ async function doSearch() {
   status.className = 'status';
   status.textContent = '검색하는 중...';
   try {
-    lastCandidates = await itunes.searchArtists(term);
+    lastCandidates = await itunes.searchArtists(term, selectedCountries());
     if (!lastCandidates.length) {
       $('artistGrid').style.display = 'none';
       status.textContent = '가수를 찾지 못했어요. 표기(한글/영문)를 바꿔서 다시 검색해 보세요.';
@@ -1423,6 +1483,10 @@ function nextQuestion() {
   $('hintChip').className = 'hint-chip';
   $('hintChip').textContent = '';
   $('albumReveal').className = 'album-reveal';
+  // 재생 버튼·입력창 복원
+  $('playZone').style.display = '';
+  $('guessLabel').style.display = '';
+  $('answerRow').style.display = 'flex';
   fullPlaying = false;
   $('fullPlayBtn').textContent = '노래 듣기';
   $('finishRow').style.display = 'none';
@@ -1545,11 +1609,13 @@ $('giveUpBtn').addEventListener('click', () => {
 function finishQuestion() {
   state.answered = true;
   nextLockUntil = Date.now() + 700;
-  $('guessInput').disabled = true;
-  $('guessBtn').disabled = true;
-  $('giveUpBtn').disabled = true;
   $('hintBtn').disabled = true;
   $('finishRow').style.display = 'flex';
+  // 재생 버튼 자리에 앨범 사진, 입력창 자리에 정답 텍스트를 배치
+  $('playZone').style.display = 'none';
+  $('hintChip').className = 'hint-chip';
+  $('guessLabel').style.display = 'none';
+  $('answerRow').style.display = 'none';
   if (state.current.art) {
     $('albumArt').src = state.current.art;
     $('albumReveal').className = 'album-reveal show';
