@@ -527,6 +527,49 @@
     padding: 2px;
     cursor: pointer;
   }
+  .tp-feedback { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .tp-feedback button { width: 100%; font-size: 13px; }
+
+  /* ---------- 모달 (피드백 / 관리자) ---------- */
+  .modal-back {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; padding: 16px;
+  }
+  .modal {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 22px;
+    width: 100%; max-width: 480px;
+    max-height: 85vh; overflow-y: auto;
+  }
+  .m-title { font-size: 16px; font-weight: 800; margin-bottom: 14px; }
+  .modal textarea {
+    width: 100%; min-height: 120px; resize: vertical;
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    color: var(--ink); padding: 12px 14px; font-size: 15px; outline: none;
+    font-family: inherit;
+  }
+  .modal textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.2); }
+  .m-actions { display: flex; gap: 8px; margin-top: 14px; }
+  .m-actions button { flex: 1; }
+  .adm-sum { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .adm-stat {
+    flex: 1 1 30%; background: var(--card2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px; text-align: center;
+  }
+  .adm-stat b { display: block; font-size: 20px; }
+  .adm-stat span { font-size: 11.5px; color: var(--sub); }
+  .adm-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-bottom: 16px; }
+  .adm-table th, .adm-table td { padding: 5px 8px; text-align: right; border-bottom: 1px solid var(--line); }
+  .adm-table th { color: var(--sub); font-weight: 600; }
+  .adm-table td:first-child, .adm-table th:first-child { text-align: left; }
+  .adm-sec { font-size: 13px; font-weight: 700; margin: 14px 0 8px; }
+  .fb-item { background: var(--card2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .fb-item .fb-ts { font-size: 11px; color: var(--sub); margin-bottom: 4px; }
+  .fb-item .fb-tx { font-size: 13.5px; white-space: pre-wrap; word-break: break-word; }
 </style>
 </head>
 <body>
@@ -538,6 +581,40 @@
     <label>직접 설정</label>
     <div class="tp-row"><span>배경색</span><input type="color" id="customBg"></div>
     <div class="tp-row"><span>포인트색</span><input type="color" id="customAccent"></div>
+  </div>
+  <div class="tp-feedback">
+    <button class="ghost" id="fbOpenBtn">💬 의견 남기기</button>
+  </div>
+</div>
+
+<!-- 사용자 피드백 모달 -->
+<div class="modal-back" id="fbModal" style="display:none">
+  <div class="modal">
+    <div class="m-title">의견 남기기</div>
+    <textarea id="fbText" maxlength="2000" placeholder="불편한 점, 바라는 기능, 응원 한마디 등 자유롭게 적어주세요"></textarea>
+    <div class="m-actions">
+      <button class="ghost" id="fbCancel">닫기</button>
+      <button id="fbSend">보내기</button>
+    </div>
+    <div class="status" id="fbStatus"></div>
+  </div>
+</div>
+
+<!-- 관리자 모달 (버전 텍스트 클릭으로 진입) -->
+<div class="modal-back" id="adminModal" style="display:none">
+  <div class="modal">
+    <div class="m-title">관리자</div>
+    <div id="adminLogin">
+      <div class="row">
+        <input type="password" id="adminKey" placeholder="admin key" autocomplete="off">
+        <button id="adminGo">확인</button>
+      </div>
+      <div class="status" id="adminStatus"></div>
+    </div>
+    <div id="adminDash" style="display:none"></div>
+    <div class="m-actions">
+      <button class="ghost" id="adminClose">닫기</button>
+    </div>
   </div>
 </div>
 
@@ -662,7 +739,7 @@
     </div>
 
     <footer>
-      v25
+      v26
     </footer>
   </div>
 </div>
@@ -756,6 +833,121 @@ function initTheme() {
 }
 initTheme();
 
+// ---------- 사용자 피드백 / 방문 기록 / 관리자 ----------
+const API = 'https://intro-quiz.seonghyunn.deno.net';
+
+// 피드백 모달
+$('fbOpenBtn').addEventListener('click', () => {
+  $('themePanel').style.display = 'none';
+  $('fbStatus').textContent = '';
+  $('fbText').value = '';
+  $('fbModal').style.display = 'flex';
+  $('fbText').focus();
+});
+$('fbCancel').addEventListener('click', () => { $('fbModal').style.display = 'none'; });
+$('fbModal').addEventListener('click', e => { if (e.target === $('fbModal')) $('fbModal').style.display = 'none'; });
+$('fbSend').addEventListener('click', async () => {
+  const text = $('fbText').value.trim();
+  const st = $('fbStatus');
+  if (!text) { st.textContent = '내용을 입력해 주세요.'; st.className = 'status error'; return; }
+  $('fbSend').disabled = true;
+  st.textContent = '보내는 중...';
+  st.className = 'status';
+  try {
+    const r = await fetch(API + '/feedback', { method: 'POST', body: JSON.stringify({ text }) });
+    const d = await r.json();
+    if (!d.ok) throw new Error('fail');
+    st.textContent = '소중한 의견 감사합니다!';
+    st.className = 'status ok';
+    setTimeout(() => { $('fbModal').style.display = 'none'; }, 1200);
+  } catch (e) {
+    st.textContent = '전송에 실패했어요. 잠시 후 다시 시도해 주세요.';
+    st.className = 'status error';
+  } finally {
+    $('fbSend').disabled = false;
+  }
+});
+
+// 방문·체류시간 기록 (개인 식별 없이 브라우저별 무작위 id만 사용)
+(function initTracking() {
+  let sid = '';
+  try {
+    sid = localStorage.getItem('quizSid') || '';
+    if (!sid) { sid = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('quizSid', sid); }
+  } catch (e) { sid = 'anon'; }
+  try { fetch(API + '/track', { method: 'POST', body: JSON.stringify({ type: 'visit', sid }) }); } catch (e) {}
+  const t0 = Date.now();
+  let sent = false;
+  const sendLeave = () => {
+    if (sent) return;
+    sent = true;
+    const dur = Math.round((Date.now() - t0) / 1000);
+    try { navigator.sendBeacon(API + '/track', JSON.stringify({ type: 'leave', sid, dur })); } catch (e) {}
+  };
+  addEventListener('pagehide', sendLeave);
+  addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') sendLeave(); });
+})();
+
+// 관리자 모드 — 하단 버전 텍스트 클릭으로 진입
+document.querySelector('footer').addEventListener('click', () => {
+  $('adminLogin').style.display = 'block';
+  $('adminDash').style.display = 'none';
+  $('adminDash').innerHTML = '';
+  $('adminKey').value = '';
+  $('adminStatus').textContent = '';
+  $('adminModal').style.display = 'flex';
+  $('adminKey').focus();
+});
+$('adminClose').addEventListener('click', () => { $('adminModal').style.display = 'none'; });
+$('adminModal').addEventListener('click', e => { if (e.target === $('adminModal')) $('adminModal').style.display = 'none'; });
+$('adminKey').addEventListener('keydown', e => { if (e.key === 'Enter') $('adminGo').click(); });
+$('adminGo').addEventListener('click', async () => {
+  const key = $('adminKey').value.trim();
+  const st = $('adminStatus');
+  if (!key) return;
+  $('adminGo').disabled = true;
+  st.textContent = '확인 중...';
+  st.className = 'status';
+  try {
+    const r = await fetch(API + '/admin?key=' + encodeURIComponent(key));
+    const d = await r.json();
+    if (!d.ok) { st.textContent = '키가 올바르지 않아요.'; st.className = 'status error'; return; }
+    renderAdminDash(d);
+    $('adminLogin').style.display = 'none';
+    $('adminDash').style.display = 'block';
+  } catch (e) {
+    st.textContent = '서버에 연결하지 못했어요.';
+    st.className = 'status error';
+  } finally {
+    $('adminGo').disabled = false;
+  }
+});
+
+function renderAdminDash(d) {
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const days = d.days || [];
+  const today = days[days.length - 1] || { visitors: 0, avgDwellSec: 0 };
+  const total14 = days.reduce((s, x) => s + x.visitors, 0);
+  const fmtDur = s => s >= 60 ? Math.round(s / 60) + '분 ' + (s % 60) + '초' : s + '초';
+  let html = `
+    <div class="adm-sum">
+      <div class="adm-stat"><b>${today.visitors}</b><span>오늘 방문자</span></div>
+      <div class="adm-stat"><b>${total14}</b><span>14일 방문자</span></div>
+      <div class="adm-stat"><b>${fmtDur(today.avgDwellSec)}</b><span>오늘 평균 체류</span></div>
+    </div>
+    <div class="adm-sec">최근 14일</div>
+    <table class="adm-table"><tr><th>날짜</th><th>방문자</th><th>세션</th><th>평균 체류</th></tr>`;
+  for (const x of [...days].reverse()) {
+    html += `<tr><td>${x.date.slice(5)}</td><td>${x.visitors}</td><td>${x.sessions}</td><td>${fmtDur(x.avgDwellSec)}</td></tr>`;
+  }
+  html += `</table><div class="adm-sec">사용자 피드백 (${(d.feedback || []).length}건)</div>`;
+  if (!(d.feedback || []).length) html += `<div class="status">아직 피드백이 없어요.</div>`;
+  for (const f of (d.feedback || [])) {
+    html += `<div class="fb-item"><div class="fb-ts">${esc((f.ts || '').replace('T', ' ').slice(0, 16))}</div><div class="fb-tx">${esc(f.text)}</div></div>`;
+  }
+  $('adminDash').innerHTML = html;
+}
+
 // ---------- 공통 유틸 ----------
 function jsonp(url) {
   return new Promise((resolve, reject) => {
@@ -802,9 +994,9 @@ function noteResult(d, limitUsed) {
   const f = document.querySelector('footer');
   if (!f) return;
   if (!limitUsed || n < limitUsed) {
-    f.textContent = 'v25 · 아티스트의 전체 곡이 조회되었습니다.';
+    f.textContent = 'v26 · 아티스트의 전체 곡이 조회되었습니다.';
   } else {
-    f.textContent = 'v25 · 서버 용량으로 인해 일부 곡만 조회되었습니다.';
+    f.textContent = 'v26 · 서버 용량으로 인해 일부 곡만 조회되었습니다.';
   }
 }
 function withLimit(promise, limitUsed) {
