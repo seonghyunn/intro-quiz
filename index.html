@@ -478,7 +478,7 @@
   .theme-btn:hover { background: var(--card2); }
   .theme-panel {
     position: fixed;
-    top: 64px;
+    top: 114px;
     right: 14px;
     width: 250px;
     max-width: calc(100vw - 28px);
@@ -527,8 +527,7 @@
     padding: 2px;
     cursor: pointer;
   }
-  .tp-feedback { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
-  .tp-feedback button { width: 100%; font-size: 13px; }
+  .fb-btn { top: 64px; }
 
   /* ---------- 모달 (피드백 / 관리자) ---------- */
   .modal-back {
@@ -582,10 +581,8 @@
     <div class="tp-row"><span>배경색</span><input type="color" id="customBg"></div>
     <div class="tp-row"><span>포인트색</span><input type="color" id="customAccent"></div>
   </div>
-  <div class="tp-feedback">
-    <button class="ghost" id="fbOpenBtn">💬 의견 남기기</button>
-  </div>
 </div>
+<button class="theme-btn fb-btn" id="fbOpenBtn" title="의견 남기기">💬</button>
 
 <!-- 사용자 피드백 모달 -->
 <div class="modal-back" id="fbModal" style="display:none">
