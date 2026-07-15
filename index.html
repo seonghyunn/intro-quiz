@@ -619,8 +619,8 @@
 
       <div class="game-opts">
         <div class="mode-seg" id="segPos">
-          <button type="button" data-pos="start" class="active">도입부부터</button>
-          <button type="button" data-pos="random">랜덤 구간</button>
+          <button type="button" data-pos="start" class="active" title="iTunes에서 제공하는 무료 음원의 시작 지점부터 재생돼요">하이라이트부터</button>
+          <button type="button" data-pos="random" title="iTunes에서 제공하는 무료 음원의 무작위 지점부터 재생돼요 (한 곡 안에서는 같은 구간 유지)">랜덤 구간</button>
         </div>
         <div class="dur-row">
           재생 <input type="number" id="durInput" value="1" min="0.5" max="5" step="0.5">초
@@ -662,7 +662,7 @@
     </div>
 
     <footer>
-      v23
+      v24
     </footer>
   </div>
 </div>
@@ -802,9 +802,9 @@ function noteResult(d, limitUsed) {
   const f = document.querySelector('footer');
   if (!f) return;
   if (!limitUsed || n < limitUsed) {
-    f.textContent = 'v23 · 아티스트의 전체 곡이 조회되었습니다.';
+    f.textContent = 'v24 · 아티스트의 전체 곡이 조회되었습니다.';
   } else {
-    f.textContent = 'v23 · 서버 용량으로 인해 일부 곡만 조회되었습니다.';
+    f.textContent = 'v24 · 서버 용량으로 인해 일부 곡만 조회되었습니다.';
   }
 }
 function withLimit(promise, limitUsed) {
@@ -944,17 +944,19 @@ const itunes = {
     this._ctryCache.set(k, raw);
     return raw;
   },
-  // 가수의 "발매 국가별" 곡 목록. 앨범명 차집합으로 진짜 그 나라 발매곡만 추린다.
-  // 한국 = KR 스토어 전체 / 일본 = JP 중 앨범이 한국에 없는 것 / 미국 = US 중 앨범이 한/일에 없는 것
+  // 가수의 발매 지역별 곡 목록 (한국 / 그 외).
+  // 국가별 스토어(country 파라미터)를 조회하고 앨범명 차집합으로 판별한다:
+  //   한국 = 한국(KR) 스토어 곡 / 그 외 = 해외 스토어(JP·US)에는 있지만 한국 스토어에는 없는 앨범의 곡
+  // (한국 외 세부 국가는 iTunes 데이터로 정확히 나누기 어려워 "그 외"로 묶음)
   async tracksByCountry(cand) {
     const [kr, jp, us] = await Promise.all(['KR', 'JP', 'US'].map(c => this.rawByCountry(cand.name, c)));
     const nName = normalize(cand.name);
-    const belongs = r => r.artistId === cand.id
+    // artistId는 스토어와 무관하게 동일(예: 한국 "데이식스" = 일본 "DAY6") → artistId 우선 매칭
+    const belongs = r => String(r.artistId) === String(cand.id)
       || normalize(r.artistName).includes(nName) || nName.includes(normalize(r.artistName));
     const fKr = kr.filter(belongs), fJp = jp.filter(belongs), fUs = us.filter(belongs);
     const na = s => (s || '').toLowerCase().replace(/[^a-z0-9가-힣]/g, '');
     const krAlbums = new Set(fKr.map(x => na(x.collectionName)));
-    const jpAlbums = new Set(fJp.map(x => na(x.collectionName)));
     const mk = r => ({
       title: r.trackName, artist: cand.name, previewUrl: r.previewUrl,
       year: r.releaseDate ? new Date(r.releaseDate).getFullYear() : null,
@@ -969,10 +971,10 @@ const itunes = {
       }
       return out;
     };
+    const overseas = [...fJp, ...fUs].filter(x => !krAlbums.has(na(x.collectionName)));
     return {
       KR: dedupe(fKr).map(mk),
-      JP: dedupe(fJp.filter(x => !krAlbums.has(na(x.collectionName)))).map(mk),
-      US: dedupe(fUs.filter(x => !krAlbums.has(na(x.collectionName)) && !jpAlbums.has(na(x.collectionName)))).map(mk)
+      OV: dedupe(overseas).map(mk)
     };
   },
   // 가수의 뮤직비디오 미리듣기 목록 (제목 키 -> URL). MV는 US 스토어에만 있음
@@ -1053,8 +1055,9 @@ document.querySelectorAll('#segSearch button').forEach(b => {
   });
 });
 
-// ---------- 재생 위치: 도입부부터 / 랜덤 구간 ----------
+// ---------- 재생 위치: 하이라이트부터 / 랜덤 구간 ----------
 let playPos = 'start';
+let curRandomStart = null; // 현재 곡의 랜덤 시작점 (곡마다 한 번만 정하고 재생 시 재사용)
 try { const p = localStorage.getItem('quizPlayPos'); if (p === 'random') playPos = 'random'; } catch (e) {}
 function applyPosButtons() {
   document.querySelectorAll('#segPos button').forEach(b => b.classList.toggle('active', b.dataset.pos === playPos));
@@ -1264,21 +1267,22 @@ $('yearFilterChk').addEventListener('change', () => {
   $('yearField').style.display = $('yearFilterChk').checked ? 'block' : 'none';
 });
 
-// 발매 국가 필터 — 가수 선택 후, 곡이 여러 나라에 나뉠 때만 노출
-const CTRY_LABEL = { KR: '🇰🇷 한국', JP: '🇯🇵 일본', US: '🇺🇸 미국' };
+// 발매 국가 필터 — 가수 선택 후, 곡이 국내/해외로 나뉠 때만 노출
+const CTRY_LABEL = { KR: '🇰🇷 한국', OV: '🌏 그 외 국가' };
+const REGIONS = ['KR', 'OV'];
 let activeCountries = new Set(['KR']);
 
 function countrySongCounts() {
-  const c = { KR: 0, JP: 0, US: 0 };
+  const c = { KR: 0, OV: 0 };
   for (const { byCountry } of selected.values()) {
-    for (const k of ['KR', 'JP', 'US']) c[k] += (byCountry[k] || []).length;
+    for (const k of REGIONS) c[k] += (byCountry[k] || []).length;
   }
   return c;
 }
 
 function renderCountryFilter() {
   const counts = countrySongCounts();
-  const withSongs = ['KR', 'JP', 'US'].filter(k => counts[k] > 0);
+  const withSongs = REGIONS.filter(k => counts[k] > 0);
   const wrap = $('countryFilter');
   if (selected.size === 0 || withSongs.length < 2) {
     // 나뉘지 않으면 필터 숨기고, 곡 있는 국가를 모두 활성화
@@ -1371,7 +1375,7 @@ async function toggleSelect(cand) {
   }
   // 발매 국가별 곡 목록 조회 (한국/일본/미국)
   const byCountry = await itunes.tracksByCountry(cand);
-  const total = byCountry.KR.length + byCountry.JP.length + byCountry.US.length;
+  const total = byCountry.KR.length + byCountry.OV.length;
   if (total < 2) {
     status.textContent = `${cand.name}의 미리듣기 곡이 부족해서 선택할 수 없어요.`;
     status.className = 'status error';
@@ -1537,6 +1541,7 @@ function nextQuestion() {
   }
   state.current = state.remaining.pop();
   state.answered = false;
+  curRandomStart = null; // 새 곡이므로 랜덤 구간 다시 정하도록 초기화
   stopAllSound();
   ytLoadedKey = null;
   // 재생할 소스 미리 로드 (YT 모드는 영상 ID 미리 검색)
@@ -1609,10 +1614,14 @@ async function playSnippet() {
 
   const { url, fallback } = currentSrc();
   if (audio.src !== url) audio.src = url;
-  // 재생 위치: 도입부부터(0초) 또는 랜덤 구간(미리듣기 끝 5초 전까지에서 시작)
+  // 재생 위치: 하이라이트부터(0초) 또는 랜덤 구간(미리듣기 끝 5초 전까지에서 시작)
+  // 랜덤 구간은 곡당 한 번만 정해서, 같은 곡에서는 다시 눌러도 같은 구간이 나온다.
   let startAt = 0;
-  if (playPos === 'random' && isFinite(audio.duration) && audio.duration > 5) {
-    startAt = Math.random() * (audio.duration - 5);
+  if (playPos === 'random') {
+    if (curRandomStart == null && isFinite(audio.duration) && audio.duration > 5) {
+      curRandomStart = Math.random() * (audio.duration - 5);
+    }
+    startAt = curRandomStart || 0;
   }
   try { audio.currentTime = startAt; } catch (e) { audio.currentTime = 0; }
   const btn = $('playBtn');
@@ -1625,7 +1634,7 @@ async function playSnippet() {
   }).catch(() => {
     $('playHint').textContent = '재생에 실패했어요. 다시 눌러보세요.';
   });
-  const posLabel = playPos === 'random' ? '랜덤 구간' : '도입부';
+  const posLabel = playPos === 'random' ? '랜덤 구간' : '하이라이트';
   $('playHint').textContent = fallback
     ? `이 곡은 MV가 없어 하이라이트 구간으로 ${dur}초 재생 중...`
     : `${posLabel} ${dur}초 재생 중...`;
