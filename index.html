@@ -662,7 +662,7 @@
     </div>
 
     <footer>
-      v24
+      v25
     </footer>
   </div>
 </div>
@@ -802,9 +802,9 @@ function noteResult(d, limitUsed) {
   const f = document.querySelector('footer');
   if (!f) return;
   if (!limitUsed || n < limitUsed) {
-    f.textContent = 'v24 · 아티스트의 전체 곡이 조회되었습니다.';
+    f.textContent = 'v25 · 아티스트의 전체 곡이 조회되었습니다.';
   } else {
-    f.textContent = 'v24 · 서버 용량으로 인해 일부 곡만 조회되었습니다.';
+    f.textContent = 'v25 · 서버 용량으로 인해 일부 곡만 조회되었습니다.';
   }
 }
 function withLimit(promise, limitUsed) {
@@ -813,7 +813,7 @@ function withLimit(promise, limitUsed) {
 
 // 전용 슬림 서버 — 애플 응답에서 필요한 필드만 남겨 1/3 크기로 전달 (느린 모바일에서도 전체 곡 수신)
 // sv=슬림 응답 스키마 버전. 서버 필드가 바뀌면 올려서 브라우저 캐시를 무효화한다.
-const SLIM = 'https://intro-quiz.seonghyunn.deno.net/search?sv=2&';
+const SLIM = 'https://intro-quiz.seonghyunn.deno.net/search?sv=3&';
 
 async function itunesSearch(params) {
   const full = 'https://itunes.apple.com/search?' + params;
@@ -944,37 +944,93 @@ const itunes = {
     this._ctryCache.set(k, raw);
     return raw;
   },
+  // 해외 발매 레이블 판별 (앨범 copyright 표기 기준)
+  _isForeignLabel(cp) {
+    return /japan|nippon|株式会社|sony music labels|pony canyon|avex|victor entertainment|king record|lantis|being inc|toy's factory|nexTone/i.test(cp || '');
+  },
+  // 한국 스토어의 "앨범 검색" 결과로 앨범 집합을 만든다 (노래 검색은 일부 싱글·OST를 누락함)
+  // - domestic: 국내 레이블 발매 앨범 / foreign: 해외 레이블 발매 앨범
+  //   (예: 드래곤포니 "Run to Run - EP" = WARNER MUSIC JAPAN → 한국 스토어에 있어도 해외 발매)
+  _albumCache: new Map(),
+  async albumsOf(cand) {
+    const k = String(cand.id);
+    if (this._albumCache.has(k)) return this._albumCache.get(k);
+    const na = s => (s || '').toLowerCase().replace(/[^a-z0-9가-힣]/g, '');
+    const info = { domestic: new Set(), foreign: new Set(), domesticTitles: new Set() };
+    try {
+      const d = await itunesSearch('media=music&entity=album&country=KR&limit=200&term=' + encodeURIComponent(cand.name));
+      for (const a of (d.results || [])) {
+        if (String(a.artistId) !== String(cand.id)) continue;
+        if (this._isForeignLabel(a.copyright)) {
+          info.foreign.add(na(a.collectionName));
+        } else {
+          info.domestic.add(na(a.collectionName));
+          // 싱글 앨범명은 대개 곡명 기반 → 곡명 차단 키로도 사용 (노래 검색이 누락한 국내 곡 보완)
+          const t = normalize(coreTitle(a.collectionName));
+          if (t) info.domesticTitles.add(t);
+        }
+      }
+    } catch (e) {}
+    this._albumCache.set(k, info);
+    return info;
+  },
   // 가수의 발매 지역별 곡 목록 (한국 / 그 외).
-  // 국가별 스토어(country 파라미터)를 조회하고 앨범명 차집합으로 판별한다:
-  //   한국 = 한국(KR) 스토어 곡 / 그 외 = 해외 스토어(JP·US)에는 있지만 한국 스토어에는 없는 앨범의 곡
-  // (한국 외 세부 국가는 iTunes 데이터로 정확히 나누기 어려워 "그 외"로 묶음)
+  // - 곡 소속은 artistId 엄격 매칭 (이름 부분일치로 타 가수·커버·트리뷰트가 섞이는 것 방지)
+  // - 한국 = KR 스토어 곡 중 해외 레이블 앨범이 아닌 것
+  // - 그 외 = KR 스토어의 해외 레이블 앨범 곡 + 해외 스토어(JP·US)에만 있는 앨범의 곡
+  //   (해외 스토어 곡은 앨범·제목 모두 한국에 없어야 인정 — 영어 제목판 등 중복 방지)
   async tracksByCountry(cand) {
-    const [kr, jp, us] = await Promise.all(['KR', 'JP', 'US'].map(c => this.rawByCountry(cand.name, c)));
-    const nName = normalize(cand.name);
-    // artistId는 스토어와 무관하게 동일(예: 한국 "데이식스" = 일본 "DAY6") → artistId 우선 매칭
-    const belongs = r => String(r.artistId) === String(cand.id)
-      || normalize(r.artistName).includes(nName) || nName.includes(normalize(r.artistName));
+    const [kr, jp, us, albums] = await Promise.all([
+      this.rawByCountry(cand.name, 'KR'),
+      this.rawByCountry(cand.name, 'JP'),
+      this.rawByCountry(cand.name, 'US'),
+      this.albumsOf(cand)
+    ]);
+    // artistId는 스토어와 무관하게 동일(예: 한국 "데이식스" = 일본 "DAY6")
+    const belongs = r => String(r.artistId) === String(cand.id);
     const fKr = kr.filter(belongs), fJp = jp.filter(belongs), fUs = us.filter(belongs);
     const na = s => (s || '').toLowerCase().replace(/[^a-z0-9가-힣]/g, '');
-    const krAlbums = new Set(fKr.map(x => na(x.collectionName)));
+    const tkey = r => normalize(stripParen(r.trackName));
+    const ckey = r => normalize(coreTitle(r.trackName));
+
+    // 한국 스토어 곡을 국내/해외 레이블로 분리
+    const krDomestic = fKr.filter(x => !albums.foreign.has(na(x.collectionName)));
+    const krForeign = fKr.filter(x => albums.foreign.has(na(x.collectionName)));
+
+    const krTitleKeys = new Set([...krDomestic.map(tkey), ...krDomestic.map(ckey)]);
+
+    // 해외 스토어 곡이 "그 외"로 인정되려면:
+    //  1) 앨범이 한국의 국내 레이블 앨범 목록(앨범 검색 기준)에 없어야 하고
+    //  2) 앨범이 한국 노래 검색 결과의 앨범에도 없어야 하며
+    //  3) 제목도 한국 국내 발매곡에 없어야 한다 (영어 제목판 등 중복 방지)
+    const krSongAlbums = new Set(krDomestic.map(x => na(x.collectionName)));
+    const ovStore = [...fJp, ...fUs].filter(x =>
+      !albums.domestic.has(na(x.collectionName))
+      && !krSongAlbums.has(na(x.collectionName))
+      && !krTitleKeys.has(tkey(x)) && !krTitleKeys.has(ckey(x))
+      && !albums.domesticTitles.has(tkey(x)) && !albums.domesticTitles.has(ckey(x)));
+
     const mk = r => ({
       title: r.trackName, artist: cand.name, previewUrl: r.previewUrl,
       year: r.releaseDate ? new Date(r.releaseDate).getFullYear() : null,
       art: r.artworkUrl100 ? r.artworkUrl100.replace('100x100', '300x300') : null
     });
+    // "Japanese ver." / "(Japanese Version)" 같은 표기 차이를 무시하기 위한 보조 키
+    const vkey = k => k.replace(/(japanese|english|korean)?ver(sion)?$/, '');
     const dedupe = rows => {
       const seen = new Set(); const out = [];
       for (const r of rows) {
-        const key = normalize(stripParen(r.trackName));
-        if (!key || seen.has(key)) continue;
-        seen.add(key); out.push(r);
+        const key = tkey(r);
+        if (!key) continue;
+        const alt = vkey(key);
+        if (seen.has(key) || seen.has(alt)) continue;
+        seen.add(key); seen.add(alt); out.push(r);
       }
       return out;
     };
-    const overseas = [...fJp, ...fUs].filter(x => !krAlbums.has(na(x.collectionName)));
     return {
-      KR: dedupe(fKr).map(mk),
-      OV: dedupe(overseas).map(mk)
+      KR: dedupe(krDomestic).map(mk),
+      OV: dedupe([...krForeign, ...ovStore]).map(mk)
     };
   },
   // 가수의 뮤직비디오 미리듣기 목록 (제목 키 -> URL). MV는 US 스토어에만 있음
@@ -998,13 +1054,12 @@ const itunes = {
     return map;
   },
   async tracksFor(cand) {
-    const nName = normalize(cand.name);
     const mvMap = await this.mvMapFor(cand.name);
     const seen = new Set();
     const tracks = [];
     for (const r of this._cache.raw || []) {
       if (!r.previewUrl) continue;
-      if (r.artistId !== cand.id && !normalize(r.artistName).includes(nName)) continue;
+      if (String(r.artistId) !== String(cand.id)) continue; // 본인 곡만 (커버·트리뷰트 배제)
       const key = normalize(stripParen(r.trackName));
       if (!key || seen.has(key)) continue;
       seen.add(key);
