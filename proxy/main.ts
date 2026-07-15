@@ -26,6 +26,8 @@ Deno.serve(async (req: Request) => {
       primaryGenreName: t.primaryGenreName,
       collectionId: t.collectionId,
       collectionName: t.collectionName,
+      copyright: t.copyright,       // entity=album 조회 시 발매 레이블 판별용
+      wrapperType: t.wrapperType,
     }));
     return json({ resultCount: results.length, results }, 200);
   } catch (_e) {
