@@ -93,13 +93,29 @@ Deno.serve(async (req: Request) => {
     try {
       const body = JSON.parse(await req.text());
       const day = new Date().toISOString().slice(0, 10);
+      const rid = () => Date.now() + "_" + Math.random().toString(36).slice(2, 6);
       const kv = await getKv();
       if (body.type === "visit") {
         const sid = String(body.sid || "").slice(0, 40);
         if (sid) await kv.set(["visit", day, sid], 1);
       } else if (body.type === "leave") {
         const dur = Math.min(7200, Math.max(1, Math.round(Number(body.dur) || 0)));
-        if (dur > 0) await kv.set(["dwell", day, Date.now() + "_" + Math.random().toString(36).slice(2, 6)], dur);
+        if (dur > 0) await kv.set(["dwell", day, rid()], dur);
+      } else if (body.type === "q") {
+        // 문제 1개가 끝날 때의 게임 행동 지표
+        await kv.set(["q", day, rid()], {
+          plays: Math.min(99, Math.max(0, Math.round(Number(body.plays) || 0))),
+          hint: body.hint ? 1 : 0,
+          wrongs: Math.min(99, Math.max(0, Math.round(Number(body.wrongs) || 0))),
+          dur: Math.min(5, Math.max(0.5, Number(body.dur) || 1)),
+          result: body.result === "correct" ? "correct" : "giveup",
+        });
+      } else if (body.type === "start") {
+        // 게임 시작 시 선택한 가수들
+        const names = Array.isArray(body.artists)
+          ? body.artists.slice(0, 10).map((s: unknown) => String(s).slice(0, 60)).filter(Boolean)
+          : [];
+        if (names.length) await kv.set(["astart", day, rid()], names);
       }
       return json({ ok: true }, 200);
     } catch (_e) {
@@ -120,6 +136,10 @@ Deno.serve(async (req: Request) => {
       feedback.push(e.value);
     }
     const days: unknown[] = [];
+    // 최근 14일 게임 행동 집계
+    const q = { n: 0, plays: 0, wrongs: 0, hints: 0, correct: 0 };
+    const durDist: Record<string, number> = {};
+    const artistCount: Record<string, number> = {};
     for (let i = 13; i >= 0; i--) {
       const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
       let visitors = 0;
@@ -130,8 +150,27 @@ Deno.serve(async (req: Request) => {
         n++;
       }
       days.push({ date: d, visitors, sessions: n, avgDwellSec: n ? Math.round(sum / n) : 0 });
+
+      for await (const e of kv.list({ prefix: ["q", d] })) {
+        const v = e.value as { plays: number; hint: number; wrongs: number; dur: number; result: string };
+        q.n++;
+        q.plays += v.plays || 0;
+        q.wrongs += v.wrongs || 0;
+        q.hints += v.hint || 0;
+        if (v.result === "correct") q.correct++;
+        const dk = String(v.dur);
+        durDist[dk] = (durDist[dk] || 0) + 1;
+      }
+      for await (const e of kv.list({ prefix: ["astart", d] })) {
+        for (const name of (e.value as string[])) {
+          artistCount[name] = (artistCount[name] || 0) + 1;
+        }
+      }
     }
-    return json({ ok: true, feedback, days }, 200);
+    const topArtists = Object.entries(artistCount)
+      .sort((a, b) => b[1] - a[1]).slice(0, 10)
+      .map(([name, count]) => ({ name, count }));
+    return json({ ok: true, feedback, days, q, durDist, topArtists }, 200);
     } catch (_e) {
       return json({ ok: false, error: "kv-unavailable" }, 500);
     }
