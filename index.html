@@ -569,6 +569,33 @@
   .fb-item { background: var(--card2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
   .fb-item .fb-ts { font-size: 11px; color: var(--sub); margin-bottom: 4px; }
   .fb-item .fb-tx { font-size: 13.5px; white-space: pre-wrap; word-break: break-word; }
+
+  /* 대시보드 차트 */
+  .chart { margin: 4px 0 14px; }
+  .cols {
+    display: flex; align-items: flex-end; gap: 3px;
+    height: 96px; padding-top: 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .col {
+    flex: 1; background: var(--accent);
+    border-radius: 3px 3px 0 0; min-height: 3px;
+    position: relative; opacity: 0.9;
+  }
+  .col span {
+    position: absolute; top: -15px; left: 50%; transform: translateX(-50%);
+    font-size: 9.5px; color: var(--sub); white-space: nowrap;
+  }
+  .col-x { display: flex; gap: 3px; margin-top: 4px; }
+  .col-x div { flex: 1; text-align: center; font-size: 9.5px; color: var(--sub); overflow: hidden; }
+  .hbar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .hbar-name {
+    width: 108px; text-align: right; font-size: 12.5px; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .hbar-track { flex: 1; background: var(--card2); border-radius: 4px; height: 16px; overflow: hidden; }
+  .hbar-fill { height: 100%; background: var(--accent); border-radius: 4px; opacity: 0.9; }
+  .hbar-val { width: 32px; font-size: 11.5px; color: var(--sub); }
 </style>
 </head>
 <body>
@@ -736,7 +763,7 @@
     </div>
 
     <footer>
-      v26
+      v27
     </footer>
   </div>
 </div>
@@ -885,6 +912,13 @@ $('fbSend').addEventListener('click', async () => {
   addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') sendLeave(); });
 })();
 
+// 게임 행동 이벤트 전송 (통계용, 실패해도 무시)
+function sendEvent(payload) {
+  try { fetch(API + '/track', { method: 'POST', body: JSON.stringify(payload) }); } catch (e) {}
+}
+// 문제별 지표: 듣기 횟수 / 힌트 사용 / 오답 수
+let qPlays = 0, qHint = false, qWrongs = 0;
+
 // 관리자 모드 — 하단 버전 텍스트 클릭으로 진입
 document.querySelector('footer').addEventListener('click', () => {
   $('adminLogin').style.display = 'block';
@@ -926,13 +960,57 @@ function renderAdminDash(d) {
   const today = days[days.length - 1] || { visitors: 0, avgDwellSec: 0 };
   const total14 = days.reduce((s, x) => s + x.visitors, 0);
   const fmtDur = s => s >= 60 ? Math.round(s / 60) + '분 ' + (s % 60) + '초' : s + '초';
+  const q = d.q || { n: 0, plays: 0, wrongs: 0, hints: 0, correct: 0 };
+  const avg = (a, b) => b ? Math.round((a / b) * 10) / 10 : 0;
+  const pct = (a, b) => b ? Math.round((a / b) * 100) : 0;
+
+  // 세로 막대 차트 (일별 방문자 등)
+  const colChart = (items, labelEvery) => {
+    const max = Math.max(1, ...items.map(x => x.v));
+    let bars = '', labels = '';
+    items.forEach((x, i) => {
+      const h = Math.max(3, Math.round((x.v / max) * 100));
+      bars += `<div class="col" style="height:${h}%"><span>${x.v > 0 ? x.v : ''}</span></div>`;
+      labels += `<div>${(labelEvery && i % labelEvery !== 0) ? '' : esc(x.label)}</div>`;
+    });
+    return `<div class="chart"><div class="cols">${bars}</div><div class="col-x">${labels}</div></div>`;
+  };
+  // 가로 막대 차트 (인기 가수)
+  const hbarChart = items => {
+    const max = Math.max(1, ...items.map(x => x.count));
+    return '<div class="chart">' + items.map(x =>
+      `<div class="hbar-row"><div class="hbar-name">${esc(x.name)}</div>
+       <div class="hbar-track"><div class="hbar-fill" style="width:${Math.max(3, Math.round((x.count / max) * 100))}%"></div></div>
+       <div class="hbar-val">${x.count}</div></div>`).join('') + '</div>';
+  };
+
   let html = `
     <div class="adm-sum">
       <div class="adm-stat"><b>${today.visitors}</b><span>오늘 방문자</span></div>
       <div class="adm-stat"><b>${total14}</b><span>14일 방문자</span></div>
       <div class="adm-stat"><b>${fmtDur(today.avgDwellSec)}</b><span>오늘 평균 체류</span></div>
     </div>
-    <div class="adm-sec">최근 14일</div>
+    <div class="adm-sum">
+      <div class="adm-stat"><b>${avg(q.plays, q.n)}회</b><span>곡당 평균 듣기</span></div>
+      <div class="adm-stat"><b>${avg(q.wrongs, q.n)}회</b><span>정답까지 평균 오답</span></div>
+      <div class="adm-stat"><b>${pct(q.hints, q.n)}%</b><span>초성 힌트 사용률</span></div>
+      <div class="adm-stat"><b>${pct(q.correct, q.n)}%</b><span>정답률 (${q.n}문제)</span></div>
+    </div>
+    <div class="adm-sec">일별 방문자 (최근 14일)</div>
+    ${colChart(days.map(x => ({ label: x.date.slice(8), v: x.visitors })), 2)}
+    <div class="adm-sec">재생 시간 설정 분포</div>`;
+
+  const durKeys = ['0.5', '1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5'];
+  const durDist = d.durDist || {};
+  html += colChart(durKeys.map(k => ({ label: k + 's', v: durDist[k] || 0 })), 0);
+
+  html += `<div class="adm-sec">인기 가수 (게임 시작 기준)</div>`;
+  html += (d.topArtists || []).length
+    ? hbarChart(d.topArtists)
+    : `<div class="status">아직 기록이 없어요.</div>`;
+
+  html += `
+    <div class="adm-sec">일별 상세</div>
     <table class="adm-table"><tr><th>날짜</th><th>방문자</th><th>세션</th><th>평균 체류</th></tr>`;
   for (const x of [...days].reverse()) {
     html += `<tr><td>${x.date.slice(5)}</td><td>${x.visitors}</td><td>${x.sessions}</td><td>${fmtDur(x.avgDwellSec)}</td></tr>`;
@@ -991,9 +1069,9 @@ function noteResult(d, limitUsed) {
   const f = document.querySelector('footer');
   if (!f) return;
   if (!limitUsed || n < limitUsed) {
-    f.textContent = 'v26 · 아티스트의 전체 곡이 조회되었습니다.';
+    f.textContent = 'v27 · 아티스트의 전체 곡이 조회되었습니다.';
   } else {
-    f.textContent = 'v26 · 서버 용량으로 인해 일부 곡만 조회되었습니다.';
+    f.textContent = 'v27 · 서버 용량으로 인해 일부 곡만 조회되었습니다.';
   }
 }
 function withLimit(promise, limitUsed) {
@@ -1775,6 +1853,7 @@ function startPlay() {
   status.textContent = '';
   $('searchCard').style.display = 'none';
   $('gameCard').style.display = 'block';
+  sendEvent({ type: 'start', artists: names }); // 어떤 가수로 시작했는지 기록
   nextQuestion();
 }
 
@@ -1786,6 +1865,7 @@ function nextQuestion() {
   state.current = state.remaining.pop();
   state.answered = false;
   curRandomStart = null; // 새 곡이므로 랜덤 구간 다시 정하도록 초기화
+  qPlays = 0; qHint = false; qWrongs = 0; // 문제별 지표 초기화
   stopAllSound();
   ytLoadedKey = null;
   // 재생할 소스 미리 로드 (YT 모드는 영상 ID 미리 검색)
@@ -1840,6 +1920,7 @@ async function playSnippet() {
   stopFullPlay();
   stopAllSound();
   const dur = getDur();
+  if (!state.answered) qPlays++; // 문제 풀이 중 듣기 횟수
 
   if (playMode === 'ytstart') {
     if (!ytKey) {
@@ -1890,6 +1971,7 @@ $('replayBtn').addEventListener('click', playSnippet);
 // ---------- 초성 힌트 ----------
 $('hintBtn').addEventListener('click', () => {
   if (!state.current || state.answered) return;
+  qHint = true;
   $('hintChip').textContent = chosungHint(state.current.title);
   $('hintChip').className = 'hint-chip show';
   $('hintBtn').disabled = true;
@@ -1917,9 +1999,10 @@ function submitGuess() {
     $('okCount').textContent = state.ok;
     result.className = 'result correct';
     result.textContent = `정답! ${answerLabel()}`;
-    finishQuestion();
+    finishQuestion('correct');
   } else {
     state.no++;
+    qWrongs++;
     $('noCount').textContent = state.no;
     result.className = 'result wrong';
     result.textContent = '오답이에요. 다시 듣고 도전해 보세요.';
@@ -1934,12 +2017,14 @@ $('giveUpBtn').addEventListener('click', () => {
   const result = $('result');
   result.className = 'result reveal';
   result.textContent = `정답은 ${answerLabel()} 이었어요.`;
-  finishQuestion();
+  finishQuestion('giveup');
 });
 
-function finishQuestion() {
+function finishQuestion(resultType) {
   state.answered = true;
   nextLockUntil = Date.now() + 700;
+  // 문제별 지표 전송 (듣기 횟수·힌트·오답·재생시간 설정)
+  sendEvent({ type: 'q', plays: qPlays, hint: qHint, wrongs: qWrongs, dur: getDur(), result: resultType || 'giveup' });
   $('hintBtn').disabled = true;
   $('finishRow').style.display = 'flex';
   // 재생 버튼 자리에 앨범 사진, 입력창 자리에 정답 텍스트를 배치
