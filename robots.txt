@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://seonghyunn.github.io/intro-quiz/sitemap.xml
